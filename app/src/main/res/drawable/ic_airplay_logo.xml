@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Screen / Display Frame -->
+    <path
+        android:pathData="M 7,8 H 41 C 43.2,8 45,9.8 45,12 V 28 C 45,30.2 43.2,32 41,32 H 35 L 32,32 H 16 L 13,32 H 7 C 4.8,32 3,30.2 3,28 V 12 C 3,9.8 4.8,8 7,8 Z"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="3"
+                android:startY="8"
+                android:endX="45"
+                android:endY="32">
+                <item android:offset="0.0" android:color="#38E1FF" />
+                <item android:offset="1.0" android:color="#0A84FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- AirPlay Beam Triangle -->
+    <path
+        android:pathData="M 24,30 L 32,40 H 16 Z"
+        android:strokeWidth="0.8"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="24"
+                android:startY="30"
+                android:endX="24"
+                android:endY="40">
+                <item android:offset="0.0" android:color="#00F0FF" />
+                <item android:offset="1.0" android:color="#0A84FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- TV Stand Base Line -->
+    <path
+        android:pathData="M 19,43 H 29"
+        android:strokeWidth="2.0"
+        android:strokeColor="#64D2FF"
+        android:strokeLineCap="round" />
+</vector>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Screen / TV Display Outline -->
+    <path
+        android:pathData="M 33,32 H 75 C 78.3,32 81,34.7 81,38 V 58 C 81,61.3 78.3,64 75,64 H 65 L 61,64 H 47 L 43,64 H 33 C 29.7,64 27,61.3 27,58 V 38 C 27,34.7 29.7,32 33,32 Z"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="27"
+                android:startY="32"
+                android:endX="81"
+                android:endY="64">
+                <item android:offset="0.0" android:color="#38E1FF" />
+                <item android:offset="1.0" android:color="#0A84FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- AirPlay Cast / Wireless Stream Triangle Base -->
+    <path
+        android:pathData="M 54,60 L 68,76 H 40 Z"
+        android:strokeWidth="1.0"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="60"
+                android:endX="54"
+                android:endY="76">
+                <item android:offset="0.0" android:color="#00F0FF" />
+                <item android:offset="1.0" android:color="#0A84FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- TV Stand Base Line -->
+    <path
+        android:pathData="M 46,80 H 62"
+        android:strokeWidth="2.5"
+        android:strokeColor="#64D2FF"
+        android:strokeLineCap="round" />
+</vector>

@@ -1,0 +1,105 @@
+# ==============================================================================
+# AirPlay TV - Comprehensive Git Ignore
+# Covers: Android, Gradle, NDK / C++ / CMake, Distribution Packages, IDEs, and OS
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Package Builds & Distribution Artifacts (APK, AAB, APKS, Dist)
+# ------------------------------------------------------------------------------
+/dist/
+dist/
+*.apk
+*.ap_
+*.aab
+*.apks
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.dmg
+
+# ------------------------------------------------------------------------------
+# 2. Android & Gradle Build Artifacts
+# ------------------------------------------------------------------------------
+.gradle/
+build/
+*/build/
+app/build/
+captures/
+output.json
+*.dex
+*.class
+
+# ------------------------------------------------------------------------------
+# 3. C++ / NDK / CMake Build Files & Native Intermediate Artifacts
+# ------------------------------------------------------------------------------
+.cxx/
+*/.cxx/
+app/.cxx/
+.externalNativeBuild/
+*/.externalNativeBuild/
+app/.externalNativeBuild/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.ninja
+*.ninja_deps
+*.ninja_log
+*.o
+*.obj
+*.so
+*.a
+*.dylib
+
+# ------------------------------------------------------------------------------
+# 4. Local Environment & Signing Credentials
+# ------------------------------------------------------------------------------
+/local.properties
+local.properties
+*.jks
+*.keystore
+secrets.properties
+*.key
+*.pem
+*.p12
+
+# ------------------------------------------------------------------------------
+# 5. IDE & Editor Artifacts (Android Studio, IntelliJ, VS Code)
+# ------------------------------------------------------------------------------
+.idea/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+out/
+.vscode/
+
+# ------------------------------------------------------------------------------
+# 6. Operating System Specific Files (macOS, Windows, Linux)
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ------------------------------------------------------------------------------
+# 7. Python Artifacts (Icon Generation Scripts)
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# ------------------------------------------------------------------------------
+# 8. Logs & Diagnostic Dumps
+# ------------------------------------------------------------------------------
+*.log
+hs_err_pid*
+replay_pid*

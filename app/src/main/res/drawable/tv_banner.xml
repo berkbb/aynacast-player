@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- Background Cinematic Gradient -->
+    <path
+        android:pathData="M0,0h320v180h-320z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="320"
+                android:endY="180">
+                <item android:offset="0.0" android:color="#0B0F17" />
+                <item android:offset="0.6" android:color="#141C2B" />
+                <item android:offset="1.0" android:color="#091322" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle Geometric Neon Glow Accents -->
+    <path
+        android:pathData="M 0,0 L 140,0 L 80,180 L 0,180 Z"
+        android:fillAlpha="0.04"
+        android:fillColor="#00E5FF" />
+
+    <!-- Left Icon Emblem Container (Glassmorphic Rounded Card) -->
+    <path
+        android:pathData="M 32,32 H 108 C 114.6,32 120,37.4 120,44 V 120 C 120,126.6 114.6,132 108,132 H 32 C 25.4,132 20,126.6 20,120 V 44 C 20,37.4 25.4,32 32,32 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="20"
+                android:startY="32"
+                android:endX="120"
+                android:endY="132">
+                <item android:offset="0.0" android:color="#25354F" />
+                <item android:offset="1.0" android:color="#131D2D" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M 32,32 H 108 C 114.6,32 120,37.4 120,44 V 120 C 120,126.6 114.6,132 108,132 H 32 C 25.4,132 20,126.6 20,120 V 44 C 20,37.4 25.4,32 32,32 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#38E1FF"
+        android:fillColor="#00000000" />
+
+    <!-- AirPlay TV Screen Inside Emblem -->
+    <path
+        android:pathData="M 44,52 H 96 C 98.2,52 100,53.8 100,56 V 78 C 100,80.2 98.2,82 96,82 H 88 L 84,82 H 56 L 52,82 H 44 C 41.8,82 40,80.2 40,78 V 56 C 40,53.8 41.8,52 44,52 Z"
+        android:strokeWidth="2.8"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- AirPlay Beam Triangle -->
+    <path
+        android:pathData="M 70,80 L 82,98 H 58 Z"
+        android:strokeWidth="1.0"
+        android:strokeColor="#FFFFFF">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="70"
+                android:startY="80"
+                android:endX="70"
+                android:endY="98">
+                <item android:offset="0.0" android:color="#00F0FF" />
+                <item android:offset="1.0" android:color="#0A84FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- TV Stand Bar -->
+    <path
+        android:pathData="M 62,104 H 78"
+        android:strokeWidth="2.5"
+        android:strokeColor="#64D2FF"
+        android:strokeLineCap="round" />
+
+    <!-- Decorative Status Indicator (Live Green Dot) -->
+    <path
+        android:pathData="M 142,42 A 4,4 0 1,0 142,50 A 4,4 0 1,0 142,42"
+        android:fillColor="#30D158" />
+
+    <!-- Pill Badge: 4K UHD ULTRA LOW LATENCY -->
+    <path
+        android:pathData="M 154,41 H 276 C 278.2,41 280,42.8 280,45 V 53 C 280,55.2 278.2,57 276,57 H 154 C 151.8,57 150,55.2 150,53 V 45 C 150,42.8 151.8,41 154,41 Z"
+        android:fillColor="#1F2E45" />
+
+    <!-- Badge Line Inside Pill -->
+    <path
+        android:pathData="M 156,49 H 274"
+        android:strokeWidth="1.2"
+        android:strokeColor="#38E1FF" />
+
+    <!-- Right Side Branding Graphic Lines (Stylized AIRPLAY TV Title) -->
+    <!-- Primary Title Bar 1 -->
+    <path
+        android:pathData="M 142,72 H 280"
+        android:strokeWidth="14"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="142"
+                android:startY="72"
+                android:endX="280"
+                android:endY="72">
+                <item android:offset="0.0" android:color="#FFFFFF" />
+                <item android:offset="0.6" android:color="#E0E6ED" />
+                <item android:offset="1.0" android:color="#0A84FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtitle Bar 2 -->
+    <path
+        android:pathData="M 142,98 H 250"
+        android:strokeWidth="6"
+        android:strokeColor="#7D8B9F"
+        android:strokeLineCap="round" />
+
+    <!-- Subtitle Bar 3 -->
+    <path
+        android:pathData="M 142,112 H 215"
+        android:strokeWidth="4"
+        android:strokeColor="#4E5D73"
+        android:strokeLineCap="round" />
+
+    <!-- Bottom Edge Accent Line -->
+    <path
+        android:pathData="M 0,178 H 320"
+        android:strokeWidth="2"
+        android:strokeColor="#0A84FF" />
+</vector>

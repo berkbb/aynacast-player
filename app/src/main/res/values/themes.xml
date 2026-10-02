@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.AirPlayTv" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0F1012</item>
+        <item name="android:statusBarColor">#0F1012</item>
+        <item name="android:navigationBarColor">#0F1012</item>
+    </style>
+
+    <style name="Theme.AirPlayTv.Fullscreen" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:keepScreenOn">true</item>
+    </style>
+</resources>

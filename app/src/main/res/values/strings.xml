@@ -1,0 +1,34 @@
+<resources>
+    <string name="app_name">AirPlay TV</string>
+    <string name="app_subtitle">Apple cihazlarınızdan (iPhone, iPad, Mac) bu ekrana anında görüntü ve ses yansıtın.</string>
+    <string name="tab_settings">Ayarlar</string>
+    <string name="tab_about">Hakkında</string>
+    <string name="service_status_active">Servis Durumu: Aktif</string>
+    <string name="service_status_stopped">Servis Durumu: Durduruldu</string>
+    <string name="how_to_connect_title">Nasıl Bağlanılır?</string>
+    <string name="restart_service">Servisi Yeniden Başlat</string>
+    <string name="appearance_theme">Görünüm ve Tema</string>
+    <string name="app_language">Uygulama Dili</string>
+    <string name="setting_keep_alive_title">7/24 Arka Planda Çalışma</string>
+    <string name="setting_keep_alive_desc">Açıkken TV açıldığında servis otomatik başlar ve uygulama kapalıyken de yayın almaya devam eder. Kapalıyken yalnızca uygulama açıkken çalışır.</string>
+    <string name="keep_alive_enabled">7/24 Arka Plan Açık (Önerilen)</string>
+    <string name="keep_alive_disabled">Yalnızca Uygulama Açıkken</string>
+    <string name="theme_system">Sistem</string>
+    <string name="theme_dark">Koyu</string>
+    <string name="theme_light">Açık</string>
+    <string name="lang_tr">Türkçe (Varsayılan)</string>
+    <string name="lang_en">İngilizce</string>
+
+    <!-- About & Legal Info Strings -->
+    <string name="about_version">Sürüm: v1.0.0</string>
+    <string name="about_architecture_title">Mimari Tasarım</string>
+    <string name="about_architecture_desc">Arka Plan Daemon Servisi (Foreground Daemon) + İhtiyaç Anında Açılan Compose TV Arayüzü (On-Demand UI).</string>
+    <string name="about_protocols_title">Desteklenen Protokoller ve Motorlar</string>
+    <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Donanım Çözücü, Low-Latency PCM AudioTrack.</string>
+    <string name="about_developer_title">Geliştirici ve Telif</string>
+    <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara Üniversitesi Teknokent</string>
+    <string name="about_license_title">Lisans</string>
+    <string name="about_license_desc">Apache 2.0 Açık Kaynak Lisansı ile korunmaktadır.</string>
+    <string name="about_disclaimer_title">Yasal Uyarı ve Marka Bildirimi</string>
+    <string name="about_disclaimer_desc">AirPlay, Apple TV, iPhone, iPad ve Mac; Apple Inc.\'in ABD ve diğer ülkelerde tescilli ticari markalarıdır. Bu bağımsız açık kaynak projesi Apple Inc. ile ilişkili değildir, Apple tarafından onaylanmamış veya desteklenmemiştir. Uygulama yalnızca yerel ağda birlikte çalışabilirlik amacıyla geliştirilmiş olup hiçbir telifli DRM/FairPlay içeriği kırmaz veya şifresini çözmez.</string>
+</resources>
