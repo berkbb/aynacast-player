@@ -42,6 +42,13 @@ void RaopRtspServer::setDeviceIdentity(const std::string& deviceName, const std:
     LOGI("Configured server identity: '%s' (%s)", deviceName_.c_str(), macAddress_.c_str());
 }
 
+void RaopRtspServer::setDisplayResolution(int width, int height, float refreshRate) {
+    if (width > 0) displayWidth_ = width;
+    if (height > 0) displayHeight_ = height;
+    if (refreshRate > 0.0f) displayRefreshRate_ = refreshRate;
+    LOGI("Display resolution set: %dx%d @ %.2f fps", displayWidth_, displayHeight_, displayRefreshRate_);
+}
+
 bool RaopRtspServer::start(int rtspPort, int videoPort) {
     if (isRunning_.load()) return true;
 
@@ -189,21 +196,44 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
     struct timeval tv{5, 0}; // 5-second socket timeout
     setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    uint8_t header[128];
+    // AirPlay Mirror video stream packet format:
+    //   Bytes [0..3]:  payload_size  (big-endian uint32)
+    //   Byte  [4]:     packet_type   (0x01=SPS/PPS config, 0x00=video NAL frame)
+    //   Bytes [5..7]:  padding/flags (ignored)
+    //   Bytes [8..15]: timestamp     (big-endian uint64, NTP-based)
+    //   Bytes [16..]:  payload       (H.264 data, payloadLen bytes)
+    // Header = 16 bytes total.
+    static constexpr size_t VIDEO_HEADER_SIZE = 16;
+
+    uint8_t header[VIDEO_HEADER_SIZE];
     while (isRunning_.load()) {
         size_t headerRead = 0;
-        while (headerRead < 128) {
-            ssize_t n = recv(clientFd, header + headerRead, 128 - headerRead, 0);
-            if (n <= 0) goto end_video;
+        while (headerRead < VIDEO_HEADER_SIZE) {
+            ssize_t n = recv(clientFd, header + headerRead, VIDEO_HEADER_SIZE - headerRead, 0);
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    continue; // Timeout during idle screen: keep video socket alive!
+                }
+                goto end_video;
+            } else if (n == 0) {
+                goto end_video;
+            }
             headerRead += n;
         }
 
-        uint32_t payloadLen = static_cast<uint32_t>(header[0]) |
-                             (static_cast<uint32_t>(header[1]) << 8) |
-                             (static_cast<uint32_t>(header[2]) << 16) |
-                             (static_cast<uint32_t>(header[3]) << 24);
+        // AirPlay video TCP packet: header is big-endian (network byte order)
+        uint32_t payloadLen = (static_cast<uint32_t>(header[0]) << 24) |
+                              (static_cast<uint32_t>(header[1]) << 16) |
+                              (static_cast<uint32_t>(header[2]) << 8) |
+                               static_cast<uint32_t>(header[3]);
+
+        uint8_t packetType = header[4] & 0xFF;
+
+        uint64_t pts = 0;
+        std::memcpy(&pts, header + 8, sizeof(pts));
 
         if (payloadLen == 0 || payloadLen > 10 * 1024 * 1024) {
+            LOGW("Skipping video packet: invalid payloadLen=%u type=0x%02x", payloadLen, packetType);
             continue;
         }
 
@@ -211,19 +241,27 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
         size_t payloadRead = 0;
         while (payloadRead < payloadLen) {
             ssize_t n = recv(clientFd, payload.data() + payloadRead, payloadLen - payloadRead, 0);
-            if (n <= 0) goto end_video;
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    continue;
+                }
+                goto end_video;
+            } else if (n == 0) {
+                goto end_video;
+            }
             payloadRead += n;
         }
 
-        uint64_t pts = 0;
-        std::memcpy(&pts, header + 8, sizeof(pts));
-
-        uint8_t packetType = header[4];
         if (packetType == 0x01) {
-            LOGI("Received unencrypted SPS/PPS packet (size: %u)", payloadLen);
-            videoParser_.parsePayload(payload.data(), payload.size(), pts);
+            LOGI("Video SPS/PPS config packet: payloadLen=%u", payloadLen);
+            videoParser_.parseSpsPps(payload.data(), payload.size());
         } else if (packetType == 0x00) {
+            if (crypto_.hasVideoKey()) {
+                crypto_.decryptVideoPayload(payload.data(), payload.size());
+            }
             videoParser_.parsePayload(payload.data(), payload.size(), pts);
+        } else {
+            LOGI("Unknown video packet type=0x%02x payloadLen=%u", packetType, payloadLen);
         }
     }
 
@@ -279,12 +317,14 @@ void RaopRtspServer::handleClientConnection(int clientFd, const std::string& cli
             auto endPos = rawRequest.find(headerEnd);
             if (endPos != std::string::npos) {
                 size_t bodyStart = endPos + 4;
-                size_t bodyBytesInBuf = bytesRead - bodyStart;
+                size_t bodyBytesInBuf = (bytesRead > static_cast<ssize_t>(bodyStart)) ? (bytesRead - bodyStart) : 0;
+                size_t bodyBytesToTake = std::min(static_cast<size_t>(contentLength), bodyBytesInBuf);
                 req.body.insert(req.body.end(),
                                 reinterpret_cast<const uint8_t*>(buffer + bodyStart),
-                                reinterpret_cast<const uint8_t*>(buffer + bytesRead));
+                                reinterpret_cast<const uint8_t*>(buffer + bodyStart + bodyBytesToTake));
 
-                size_t remainingToRead = contentLength - bodyBytesInBuf;
+                size_t remainingToRead = (static_cast<size_t>(contentLength) > bodyBytesToTake) ?
+                                         (static_cast<size_t>(contentLength) - bodyBytesToTake) : 0;
                 while (remainingToRead > 0) {
                     char bodyChunk[2048];
                     ssize_t n = recv(clientFd, bodyChunk, std::min(sizeof(bodyChunk), remainingToRead), 0);
@@ -301,10 +341,7 @@ void RaopRtspServer::handleClientConnection(int clientFd, const std::string& cli
     }
 
     close(clientFd);
-    if (isStreaming_.load()) {
-        isStreaming_.store(false);
-        if (onStreamStopped_) onStreamStopped_();
-    }
+    LOGI("RTSP client connection closed for %s", clientIp.c_str());
 }
 
 RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const std::string& clientIp) {
@@ -327,12 +364,43 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
            << "  <key>name</key><string>" << deviceName_ << "</string>\n"
            << "  <key>model</key><string>AppleTV3,2</string>\n"
            << "  <key>features</key><integer>130367356919</integer>\n"
-           << "  <key>statusFlags</key><integer>4</integer>\n"
+           << "  <key>statusFlags</key><integer>68</integer>\n"
            << "  <key>protovers</key><string>1.0</string>\n"
            << "  <key>srcvers</key><string>220.68</string>\n"
            << "  <key>vv</key><integer>2</integer>\n"
            << "  <key>pk</key><data>" << crypto_.getEd25519PublicKeyBase64() << "</data>\n"
            << "  <key>pi</key><string>2e388006-13ba-4041-9a67-25dd4a43d536</string>\n"
+           << "  <key>keepAliveLowPower</key><true/>\n"
+           << "  <key>keepAliveSendStatsAsBody</key><true/>\n"
+           << "  <key>displays</key>\n"
+           << "  <array>\n"
+           << "    <dict>\n"
+           << "      <key>features</key><integer>14</integer>\n"
+           << "      <key>height</key><integer>" << displayHeight_ << "</integer>\n"
+           << "      <key>heightPixels</key><integer>" << displayHeight_ << "</integer>\n"
+           << "      <key>heightPhysical</key><integer>0</integer>\n"
+           << "      <key>overscanned</key><true/>\n"
+           << "      <key>refreshRate</key><real>" << (1.0 / displayRefreshRate_) << "</real>\n"
+           << "      <key>rotation</key><false/>\n"
+           << "      <key>uuid</key><string>e0ff8a27-6738-3d56-8a16-cc53aacee925</string>\n"
+           << "      <key>width</key><integer>" << displayWidth_ << "</integer>\n"
+           << "      <key>widthPixels</key><integer>" << displayWidth_ << "</integer>\n"
+           << "      <key>widthPhysical</key><integer>0</integer>\n"
+           << "    </dict>\n"
+           << "  </array>\n"
+           << "  <key>audioFormats</key>\n"
+           << "  <array>\n"
+           << "    <dict>\n"
+           << "      <key>audioInputFormats</key><integer>67108860</integer>\n"
+           << "      <key>audioOutputFormats</key><integer>67108860</integer>\n"
+           << "      <key>type</key><integer>100</integer>\n"
+           << "    </dict>\n"
+           << "    <dict>\n"
+           << "      <key>audioInputFormats</key><integer>67108860</integer>\n"
+           << "      <key>audioOutputFormats</key><integer>67108860</integer>\n"
+           << "      <key>type</key><integer>101</integer>\n"
+           << "    </dict>\n"
+           << "  </array>\n"
            << "</dict>\n"
            << "</plist>\n";
 
@@ -351,8 +419,38 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
     } else if (req.method == "ANNOUNCE") {
         resp.headers["Session"] = "1";
     } else if (req.method == "SETUP") {
-        resp.headers["Transport"] = "RTP/AVP/TCP;unicast;interleaved=0-1;mode=record;server_port=7100";
+        uint64_t streamConnectionId = 0;
+        size_t slash = req.uri.find_last_of('/');
+        if (slash != std::string::npos && slash + 1 < req.uri.size()) {
+            std::string idStr = req.uri.substr(slash + 1);
+            streamConnectionId = std::strtoull(idStr.c_str(), nullptr, 10);
+            LOGI("Extracted streamConnectionID from URI: %llu", (unsigned long long)streamConnectionId);
+        }
+        crypto_.handleSetup(req.body, streamConnectionId);
+
+        resp.headers["Content-Type"] = "application/x-apple-binary-plist";
         resp.headers["Session"] = "1";
+
+        // Apple AirPlay mirroring SETUP response binary plist
+        // Schema: { "eventPort": 7000, "timingPort": 7010, "streams": [{ "dataPort": videoPort_, "type": 110 }] }
+        static uint8_t baseSetupResponse[] = {
+            98, 112, 108, 105, 115, 116, 48, 48, 211, 1, 2, 3, 4, 5, 11, 89, 101, 118, 101, 110, 116, 80, 111, 114, 116, 
+            87, 115, 116, 114, 101, 97, 109, 115, 90, 116, 105, 109, 105, 110, 103, 80, 111, 114, 116, 
+            17, 27, 88, // eventPort = 7000 (0x1B58)
+            161, 6, 210, 7, 8, 9, 10, 88, 100, 97, 116, 97, 80, 111, 114, 116, 84, 116, 121, 112, 101, 
+            17, 27, 188, // dataPort = 7100 (0x1BBC) at bytes 69, 70
+            16, 110, // type = 110
+            17, 27, 98, // timingPort = 7010 (0x1B62) at bytes 74, 75
+            8, 15, 25, 33, 44, 47, 49, 54, 63, 68, 71, 73, 
+            0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 12, 
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 76
+        };
+        uint16_t vPort = static_cast<uint16_t>(videoPort_);
+        baseSetupResponse[69] = static_cast<uint8_t>((vPort >> 8) & 0xFF);
+        baseSetupResponse[70] = static_cast<uint8_t>(vPort & 0xFF);
+
+        resp.body.assign(baseSetupResponse, baseSetupResponse + sizeof(baseSetupResponse));
+        LOGI("Responded to SETUP with streams: dataPort=%d, type=110", videoPort_);
     } else if (req.method == "RECORD") {
         isStreaming_.store(true);
         videoParser_.reset();
@@ -364,18 +462,23 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
         if (onStreamStarted_) onStreamStarted_();
 
         resp.headers["Audio-Latency"] = "11025";
+        resp.headers["Audio-Jack-Status"] = "connected; type=analog";
         resp.headers["Session"] = "1";
     } else if (req.method == "GET_PARAMETER") {
-        std::string paramBody = "volume: 0.000000\r\n";
-        resp.headers["Content-Type"] = "text/parameters";
+        std::string reqBodyStr(reinterpret_cast<const char*>(req.body.data()), req.body.size());
+        if (reqBodyStr.find("volume") != std::string::npos) {
+            std::string paramBody = "volume: 0.0\r\n";
+            resp.headers["Content-Type"] = "text/parameters";
+            resp.body.assign(paramBody.begin(), paramBody.end());
+        }
         resp.headers["Session"] = "1";
-        resp.body.assign(paramBody.begin(), paramBody.end());
     } else if (req.method == "SET_PARAMETER") {
         resp.headers["Session"] = "1";
     } else if (req.method == "PAUSE" || req.method == "FLUSH") {
         resp.headers["Session"] = "1";
     } else if (req.method == "TEARDOWN") {
         isStreaming_.store(false);
+        crypto_.resetSessionCrypto();
         if (onStreamStopped_) onStreamStopped_();
         resp.headers["Session"] = "1";
     }

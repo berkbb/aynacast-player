@@ -23,13 +23,16 @@ public:
     bool generateEphemeralCurve25519KeyPair();
     bool computeSharedSecret(const uint8_t* peerPublicKey, std::vector<uint8_t>& sharedSecret);
 
-    // Pair Setup / Pair Verify / FairPlay Handshake
+    // Pair Setup / Pair Verify / FairPlay Handshake / Setup
     bool handlePairSetup(const std::vector<uint8_t>& reqBody, std::vector<uint8_t>& respBody);
     bool handlePairVerify(const std::vector<uint8_t>& reqBody, std::vector<uint8_t>& respBody);
     bool handleFpSetup(const std::vector<uint8_t>& reqBody, std::vector<uint8_t>& respBody);
+    bool handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& outStreamConnectionId);
 
     // Video stream decryption
+    bool hasVideoKey() const { return hasVideoKey_; }
     bool decryptVideoPayload(uint8_t* payload, size_t length);
+    void resetSessionCrypto();
 
 private:
     std::vector<uint8_t> serverEd25519Pk_;
@@ -38,8 +41,15 @@ private:
     std::vector<uint8_t> serverEcdhPk_;
     std::vector<uint8_t> serverEcdhSk_;
 
+    std::vector<uint8_t> sharedSecret_;
+    std::vector<uint8_t> fpKeyMsg_;
+
     std::vector<uint8_t> aesKey_;
     std::vector<uint8_t> aesIv_;
+
+    std::vector<uint8_t> videoAesKey_;
+    std::vector<uint8_t> videoAesIv_;
+    bool hasVideoKey_{false};
 
     bool keysInitialized_{false};
 };

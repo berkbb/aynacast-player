@@ -9,6 +9,11 @@ add_library(airplaycore SHARED
     h264_stream_parser.cpp
     tweetnacl.c
     aes.c
+    playfair/hand_garble.c
+    playfair/modified_md5.c
+    playfair/omg_hax.c
+    playfair/playfair.c
+    playfair/sap_hash.c
 )
 
 find_library(log-lib log)

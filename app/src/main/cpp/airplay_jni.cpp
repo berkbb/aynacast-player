@@ -217,3 +217,16 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_airplay_tv_engine_AirPlayNativeBridge_getPublicKeyHex(JNIEnv* env, jobject thiz) {
     return Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_getPublicKeyHex(env, thiz);
 }
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_setDisplayResolution(
+        JNIEnv* env,
+        jobject thiz,
+        jint width,
+        jint height,
+        jfloat refreshRate) {
+    if (g_server) {
+        g_server->setDisplayResolution(static_cast<int>(width), static_cast<int>(height), static_cast<float>(refreshRate));
+    }
+    LOGI("Display resolution configured: %dx%d @ %.2f fps", (int)width, (int)height, (float)refreshRate);
+}

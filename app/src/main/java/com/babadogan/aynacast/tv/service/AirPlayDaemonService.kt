@@ -26,6 +26,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import com.babadogan.aynacast.tv.util.DeviceIdentityHelper
+import com.babadogan.aynacast.tv.util.DisplayHelper
 
 class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListener {
 
@@ -88,8 +89,18 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         val deviceName = DeviceIdentityHelper.getAirPlayDeviceName(this)
         val macAddress = DeviceIdentityHelper.getDeviceMacAddress(this)
 
+        // Dynamically detect TV's physical display resolution
+        val displayInfo = DisplayHelper.getTvDisplayInfo(this)
+        Log.i(TAG, "Detected TV display: ${displayInfo.width}x${displayInfo.height} @ ${displayInfo.refreshRate} fps")
+
         // Start C++ RTSP core server with dynamic device identity
         AirPlayNativeBridge.initNativeServer(RTSP_PORT, deviceName, macAddress, this)
+
+        // Pass actual TV resolution to native layer (used in GET /info AirPlay negotiation)
+        AirPlayNativeBridge.setDisplayResolution(displayInfo.width, displayInfo.height, displayInfo.refreshRate)
+
+        // Also update session metadata so UI shows correct values
+        AirPlaySessionManager.setDisplayResolution(displayInfo.width, displayInfo.height, displayInfo.refreshRate.toInt())
 
         // Register mDNS / Bonjour services via Android NsdManager
         registerNsdServices()

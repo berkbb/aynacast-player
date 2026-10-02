@@ -38,6 +38,7 @@ public:
     // Parses raw incoming AirPlay video payload (which can be AVCC format with 4-byte length prefixes)
     // and converts it to Annex B stream [0x00, 0x00, 0x00, 0x01, ...] for MediaCodec.
     void parsePayload(const uint8_t* payload, size_t length, uint64_t pts);
+    void parseSpsPps(const uint8_t* payload, size_t length);
 
     void reset();
 

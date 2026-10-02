@@ -10,6 +10,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +22,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -240,60 +249,50 @@ fun SettingsTabContent(
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // Status Card
-            Card(
-                modifier = Modifier.weight(1f),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .background(AppleAccentGreen, CircleShape)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = AirPlayStrings.serviceStatusActive(currentLanguage),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 18.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
+            TvCard(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(AppleAccentGreen, CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = when (status) {
-                            ConnectionStatus.IDLE -> AirPlayStrings.statusIdle(deviceName, currentLanguage)
-                            ConnectionStatus.WAITING_FOR_STREAM -> AirPlayStrings.statusConnecting(clientName, currentLanguage)
-                            ConnectionStatus.STREAMING -> AirPlayStrings.statusStreaming(clientName, currentLanguage)
-                            ConnectionStatus.DISCONNECTED -> AirPlayStrings.statusDisconnected(currentLanguage)
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
+                        text = AirPlayStrings.serviceStatusActive(currentLanguage),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 18.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                     )
                 }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = when (status) {
+                        ConnectionStatus.IDLE -> AirPlayStrings.statusIdle(deviceName, currentLanguage)
+                        ConnectionStatus.WAITING_FOR_STREAM -> AirPlayStrings.statusConnecting(clientName, currentLanguage)
+                        ConnectionStatus.STREAMING -> AirPlayStrings.statusStreaming(clientName, currentLanguage)
+                        ConnectionStatus.DISCONNECTED -> AirPlayStrings.statusDisconnected(currentLanguage)
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
             }
 
             // Instructions Card
-            Card(
-                modifier = Modifier.weight(1f),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        text = AirPlayStrings.howToConnectTitle(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = AirPlayStrings.howToConnectInstructions(deviceName, currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp,
-                        lineHeight = 22.sp
-                    )
-                }
+            TvCard(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = AirPlayStrings.howToConnectTitle(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 18.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = AirPlayStrings.howToConnectInstructions(deviceName, currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp
+                )
             }
         }
 
@@ -391,33 +390,29 @@ fun SettingsTabContent(
         // Device & Network Info Card
         val context = androidx.compose.ui.platform.LocalContext.current
         val macAddress = remember { DeviceIdentityHelper.getDeviceMacAddress(context) }
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = AirPlayStrings.deviceInfoTitle(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 18.sp
-                )
-                Text(
-                    text = AirPlayStrings.deviceInfoPort(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = AirPlayStrings.deviceInfoResolution(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
-                )
-                Text(
-                    text = AirPlayStrings.deviceInfoMac(macAddress, currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
-                )
-            }
+        TvCard(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = AirPlayStrings.deviceInfoTitle(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 18.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = AirPlayStrings.deviceInfoPort(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp
+            )
+            Text(
+                text = AirPlayStrings.deviceInfoResolution(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp
+            )
+            Text(
+                text = AirPlayStrings.deviceInfoMac(macAddress, currentLanguage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp
+            )
         }
 
         // Restart Service Action Button
@@ -443,6 +438,8 @@ fun SettingsTabContent(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(36.dp))
     }
 }
 
@@ -451,135 +448,186 @@ fun AboutTabContent(
     currentLanguage: AppLanguage
 ) {
     val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Legal Protection & Disclaimer Card (Highlighted)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ),
-            border = BorderStroke(1.dp, AppleAccentBlue.copy(alpha = 0.4f)),
-            shape = RoundedCornerShape(20.dp)
+        TvCard(
+            borderColor = AppleAccentBlue.copy(alpha = 0.5f),
+            backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(AppleAccentBlue, CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .background(AppleAccentBlue, CircleShape)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = AirPlayStrings.aboutDisclaimerTitle(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 18.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+            }
+            Text(
+                text = AirPlayStrings.aboutDisclaimerDesc(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                lineHeight = 20.sp
+            )
+        }
+
+        // App & Version Card
+        TvCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
                     Text(
-                        text = AirPlayStrings.aboutDisclaimerTitle(currentLanguage),
+                        text = "AynaCast AirPlay TV Receiver",
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 18.sp
+                        fontSize = 20.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = AirPlayStrings.appSubtitle(currentLanguage),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp
                     )
                 }
                 Text(
-                    text = AirPlayStrings.aboutDisclaimerDesc(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
-                    lineHeight = 20.sp
+                    text = AirPlayStrings.aboutVersion("1.0.0", currentLanguage),
+                    color = AppleAccentBlue,
+                    fontSize = 16.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
             }
         }
 
-        // Details Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Column(modifier = Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                // Header & Version
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "AirPlay TV Alıcısı / Receiver",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 22.sp
-                    )
-                    Text(
-                        text = AirPlayStrings.aboutVersion("1.0.0", currentLanguage),
-                        color = AppleAccentBlue,
-                        fontSize = 16.sp
-                    )
-                }
+        // Architecture Card
+        TvCard {
+            Text(
+                text = AirPlayStrings.aboutArchitectureTitle(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 17.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = AirPlayStrings.aboutArchitectureDesc(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
+        }
 
-                Spacer(modifier = Modifier.height(4.dp))
+        // Protocols Card
+        TvCard {
+            Text(
+                text = AirPlayStrings.aboutProtocolsTitle(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 17.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = AirPlayStrings.aboutProtocolsDesc(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
+        }
 
-                // Architecture
-                Column {
-                    Text(
-                        text = AirPlayStrings.aboutArchitectureTitle(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 17.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = AirPlayStrings.aboutArchitectureDesc(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
-                }
+        // Developer Card
+        TvCard {
+            Text(
+                text = AirPlayStrings.aboutDeveloperTitle(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 17.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = AirPlayStrings.aboutDeveloperDesc(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp
+            )
+        }
 
-                // Protocols
-                Column {
-                    Text(
-                        text = AirPlayStrings.aboutProtocolsTitle(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 17.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = AirPlayStrings.aboutProtocolsDesc(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
-                }
-
-                // Developer
-                Column {
-                    Text(
-                        text = AirPlayStrings.aboutDeveloperTitle(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 17.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = AirPlayStrings.aboutDeveloperDesc(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp
-                    )
-                }
-
-                // License
-                Column {
-                    Text(
-                        text = AirPlayStrings.aboutLicenseTitle(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 17.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = AirPlayStrings.aboutLicenseDesc(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp
-                    )
+        // License Card
+        TvCard(
+            modifier = Modifier.onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
+                    coroutineScope.launch {
+                        scrollState.animateScrollBy(150f)
+                    }
+                    false
+                } else {
+                    false
                 }
             }
+        ) {
+            Text(
+                text = AirPlayStrings.aboutLicenseTitle(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 17.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = AirPlayStrings.aboutLicenseDesc(currentLanguage),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
         }
+
+        // Bottom spacer for comfortable TV viewing and scrolling clearance
+        Spacer(modifier = Modifier.height(48.dp))
+    }
+}
+
+@Composable
+fun TvCard(
+    modifier: Modifier = Modifier,
+    borderColor: Color? = null,
+    backgroundColor: Color? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable(),
+        colors = CardDefaults.cardColors(
+            containerColor = backgroundColor ?: when {
+                isFocused -> MaterialTheme.colorScheme.surfaceVariant
+                else -> MaterialTheme.colorScheme.surface
+            }
+        ),
+        border = when {
+            isFocused -> BorderStroke(2.5.dp, AppleAccentBlue)
+            borderColor != null -> BorderStroke(1.dp, borderColor)
+            else -> BorderStroke(1.dp, Color.Transparent)
+        },
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            content = content
+        )
     }
 }
 

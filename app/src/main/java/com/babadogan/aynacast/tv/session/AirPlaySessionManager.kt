@@ -60,6 +60,14 @@ object AirPlaySessionManager {
         )
     }
 
+    fun setDisplayResolution(width: Int, height: Int, fps: Int) {
+        _clientMetadata.value = _clientMetadata.value.copy(
+            resolutionWidth = width,
+            resolutionHeight = height,
+            fps = fps
+        )
+    }
+
     fun resetToIdle() {
         _isStreaming.value = false
         _connectionStatus.value = ConnectionStatus.IDLE

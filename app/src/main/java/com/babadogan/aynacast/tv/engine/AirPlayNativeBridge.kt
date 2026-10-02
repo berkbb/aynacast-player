@@ -28,4 +28,5 @@ object AirPlayNativeBridge {
     external fun stopNativeServer()
     external fun getPublicKeyHex(): String
     external fun feedSimulatedNalFrame(nalData: ByteArray, pts: Long, isKeyFrame: Boolean)
+    external fun setDisplayResolution(width: Int, height: Int, refreshRate: Float)
 }

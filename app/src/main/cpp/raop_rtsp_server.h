@@ -22,6 +22,7 @@ public:
     ~RaopRtspServer();
 
     void setDeviceIdentity(const std::string& deviceName, const std::string& macAddress);
+    void setDisplayResolution(int width, int height, float refreshRate);
 
     bool start(int rtspPort = 7000, int videoPort = 7100);
     void stop();
@@ -53,6 +54,9 @@ private:
 
     std::string deviceName_{"PhilipsTV"};
     std::string macAddress_{"00:11:22:33:44:55"};
+    int displayWidth_{1920};
+    int displayHeight_{1080};
+    float displayRefreshRate_{50.0f};
 
     std::thread serverThread_;
     std::thread videoTcpThread_;
