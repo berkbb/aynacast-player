@@ -15,7 +15,7 @@ VERSION="1.0.0"
 DIST_DIR="$SCRIPT_DIR/dist"
 
 echo "=========================================================="
-echo "    AirPlay TV Paketleme / Derleme Motoru                "
+echo "    AynaCast TV Paketleme / Derleme Motoru                "
 echo "    Hedef Mod: $MODE  |  Versiyon: v$VERSION            "
 echo "=========================================================="
 
@@ -37,27 +37,27 @@ case "$MODE" in
 
         # 1. Universal APK
         if compgen -G "app/build/outputs/apk/release/*universal*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*universal*.apk "$DIST_DIR/AirPlayTV-v$VERSION-universal.apk"
+            cp app/build/outputs/apk/release/*universal*.apk "$DIST_DIR/AynaCastTV-v$VERSION-universal.apk"
         fi
 
         # 2. ARM64 (arm64-v8a)
         if compgen -G "app/build/outputs/apk/release/*arm64-v8a*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*arm64-v8a*.apk "$DIST_DIR/AirPlayTV-v$VERSION-arm64-v8a.apk"
+            cp app/build/outputs/apk/release/*arm64-v8a*.apk "$DIST_DIR/AynaCastTV-v$VERSION-arm64-v8a.apk"
         fi
 
         # 3. ARMv7 (armeabi-v7a)
         if compgen -G "app/build/outputs/apk/release/*armeabi-v7a*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*armeabi-v7a*.apk "$DIST_DIR/AirPlayTV-v$VERSION-armeabi-v7a.apk"
+            cp app/build/outputs/apk/release/*armeabi-v7a*.apk "$DIST_DIR/AynaCastTV-v$VERSION-armeabi-v7a.apk"
         fi
 
         # 4. x86_64
         if compgen -G "app/build/outputs/apk/release/*x86_64*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*x86_64*.apk "$DIST_DIR/AirPlayTV-v$VERSION-x86_64.apk"
+            cp app/build/outputs/apk/release/*x86_64*.apk "$DIST_DIR/AynaCastTV-v$VERSION-x86_64.apk"
         fi
 
         # 5. Android App Bundle (AAB)
         if compgen -G "app/build/outputs/bundle/release/*.aab" > /dev/null; then
-            cp app/build/outputs/bundle/release/*.aab "$DIST_DIR/AirPlayTV-v$VERSION-release.aab"
+            cp app/build/outputs/bundle/release/*.aab "$DIST_DIR/AynaCastTV-v$VERSION-release.aab"
         fi
 
         echo ""

@@ -7,6 +7,8 @@ add_library(airplaycore SHARED
     airplay_crypto.cpp
     raop_rtsp_server.cpp
     h264_stream_parser.cpp
+    tweetnacl.c
+    aes.c
 )
 
 find_library(log-lib log)

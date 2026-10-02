@@ -37,10 +37,32 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(
+        JNIEnv* env,
+        jobject thiz,
+        jint port,
+        jstring jDeviceName,
+        jstring jMacAddress,
+        jobject listener);
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_airplay_tv_engine_AirPlayNativeBridge_initNativeServer(
         JNIEnv* env,
         jobject thiz,
         jint port,
+        jstring jDeviceName,
+        jstring jMacAddress,
+        jobject listener) {
+    return Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(env, thiz, port, jDeviceName, jMacAddress, listener);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(
+        JNIEnv* env,
+        jobject thiz,
+        jint port,
+        jstring jDeviceName,
+        jstring jMacAddress,
         jobject listener) {
     if (g_server && g_server->isRunning()) {
         return JNI_TRUE;
@@ -63,6 +85,14 @@ Java_com_airplay_tv_engine_AirPlayNativeBridge_initNativeServer(
     }
 
     g_server = std::make_unique<airplay::RaopRtspServer>();
+
+    if (jDeviceName && jMacAddress) {
+        const char* cDevName = env->GetStringUTFChars(jDeviceName, nullptr);
+        const char* cMac = env->GetStringUTFChars(jMacAddress, nullptr);
+        g_server->setDeviceIdentity(cDevName ? cDevName : "PhilipsTV", cMac ? cMac : "00:11:22:33:44:55");
+        if (cDevName) env->ReleaseStringUTFChars(jDeviceName, cDevName);
+        if (cMac) env->ReleaseStringUTFChars(jMacAddress, cMac);
+    }
 
     g_server->setClientConnectedCallback([](const airplay::ClientInfo& info) {
         JNIEnv* e = getJniEnv();
@@ -129,9 +159,9 @@ Java_com_airplay_tv_engine_AirPlayNativeBridge_initNativeServer(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_airplay_tv_engine_AirPlayNativeBridge_stopNativeServer(
+Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_stopNativeServer(
         JNIEnv* env,
-        jobject /*thiz*/) {
+        jobject thiz) {
     if (g_server) {
         g_server->stop();
         g_server.reset();
@@ -144,9 +174,16 @@ Java_com_airplay_tv_engine_AirPlayNativeBridge_stopNativeServer(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_airplay_tv_engine_AirPlayNativeBridge_feedSimulatedNalFrame(
+Java_com_airplay_tv_engine_AirPlayNativeBridge_stopNativeServer(
         JNIEnv* env,
-        jobject /*thiz*/,
+        jobject thiz) {
+    Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_stopNativeServer(env, thiz);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_feedSimulatedNalFrame(
+        JNIEnv* env,
+        jobject thiz,
         jbyteArray nalData,
         jlong pts,
         jboolean isKeyFrame) {
@@ -155,4 +192,28 @@ Java_com_airplay_tv_engine_AirPlayNativeBridge_feedSimulatedNalFrame(
     std::vector<uint8_t> buffer(len);
     env->GetByteArrayRegion(nalData, 0, len, reinterpret_cast<jbyte*>(buffer.data()));
     g_server->getVideoParser().parsePayload(buffer.data(), buffer.size(), static_cast<uint64_t>(pts));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_airplay_tv_engine_AirPlayNativeBridge_feedSimulatedNalFrame(
+        JNIEnv* env,
+        jobject thiz,
+        jbyteArray nalData,
+        jlong pts,
+        jboolean isKeyFrame) {
+    Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_feedSimulatedNalFrame(env, thiz, nalData, pts, isKeyFrame);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_getPublicKeyHex(JNIEnv* env, jobject thiz) {
+    if (!g_server) {
+        airplay::AirPlayCrypto tempCrypto;
+        return env->NewStringUTF(tempCrypto.getEd25519PublicKeyHex().c_str());
+    }
+    return env->NewStringUTF(g_server->getCrypto().getEd25519PublicKeyHex().c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_airplay_tv_engine_AirPlayNativeBridge_getPublicKeyHex(JNIEnv* env, jobject thiz) {
+    return Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_getPublicKeyHex(env, thiz);
 }

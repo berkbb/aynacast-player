@@ -5,12 +5,12 @@ plugins {
 }
 
 android {
-    namespace = "com.airplay.tv"
+    namespace = "com.babadogan.aynacast.tv"
     compileSdk = 35
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "com.airplay.tv"
+        applicationId = "com.babadogan.aynacast.tv"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

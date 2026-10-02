@@ -21,7 +21,9 @@ public:
     RaopRtspServer();
     ~RaopRtspServer();
 
-    bool start(int rtspPort = 7000);
+    void setDeviceIdentity(const std::string& deviceName, const std::string& macAddress);
+
+    bool start(int rtspPort = 7000, int videoPort = 7100);
     void stop();
     bool isRunning() const { return isRunning_.load(); }
 
@@ -31,21 +33,29 @@ public:
     void setAudioPacketCallback(AudioPacketCallback cb) { onAudioPacket_ = std::move(cb); }
 
     H264StreamParser& getVideoParser() { return videoParser_; }
+    AirPlayCrypto& getCrypto() { return crypto_; }
 
 private:
     void serverLoop();
     void handleClientConnection(int clientFd, const std::string& clientIp);
-    void handleVideoUdpLoop(int videoUdpPort);
-    
+
+    void videoTcpLoop();
+    void handleVideoClientConnection(int clientFd);
+
     RtspResponse processRtspRequest(const RtspRequest& req, const std::string& clientIp);
 
     std::atomic<bool> isRunning_{false};
     std::atomic<bool> isStreaming_{false};
     int rtspPort_{7000};
+    int videoPort_{7100};
     int serverFd_{-1};
+    int videoServerFd_{-1};
+
+    std::string deviceName_{"PhilipsTV"};
+    std::string macAddress_{"00:11:22:33:44:55"};
 
     std::thread serverThread_;
-    std::thread videoUdpThread_;
+    std::thread videoTcpThread_;
 
     AirPlayCrypto crypto_;
     H264StreamParser videoParser_;

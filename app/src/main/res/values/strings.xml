@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">AirPlay TV</string>
-    <string name="app_subtitle">Apple cihazlarınızdan (iPhone, iPad, Mac) bu ekrana anında görüntü ve ses yansıtın.</string>
+    <string name="app_name">AynaCast TV</string>
+    <string name="app_subtitle">Apple cihazlarınızdan (iPhone, iPad, Mac) bu ekrana anında görüntü ve ses yansıtın (AirPlay Mirroring).</string>
     <string name="tab_settings">Ayarlar</string>
     <string name="tab_about">Hakkında</string>
     <string name="service_status_active">Servis Durumu: Aktif</string>
