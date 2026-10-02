@@ -1,4 +1,4 @@
-# Jetpack Compose for Android TV — AirPlay Receiver
+# AynaCast TV — AirPlay & Screen Mirroring Receiver (Android TV & Google TV)
 
 [![Platform](https://img.shields.io/badge/Platform-Android%20TV%20%7C%20Google%20TV-blue.svg)](https://developer.android.com/tv)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple.svg)](https://kotlinlang.org)
@@ -6,10 +6,10 @@
 [![NDK](https://img.shields.io/badge/NDK-r30-orange.svg)](https://developer.android.com/ndk)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-A high-performance, ultra-low-latency, hardware-accelerated **AirPlay Receiver** engineered specifically for **Android TV** and **Google TV**.
+A high-performance, ultra-low-latency, hardware-accelerated **AirPlay Receiver & Screen Mirroring Engine** engineered specifically for **Android TV** and **Google TV**, combining native Turkish ("Ayna" - Mirror) and English ("Cast" - Stream) branding: **AynaCast TV** (`com.babadogan.aynacast.tv`).
 
 Built on a two-tier architecture:
-1. **Background Daemon Service (Zero UI Overhead):** A low-footprint foreground daemon constantly listening on the local network (`mDNS / RTSP 7000`) without occupying RAM with active UI components.
+1. **Background Daemon Service (Zero UI Overhead):** A low-footprint foreground daemon constantly listening on the local network (`mDNS / RTSP 7000 / Video TCP 7100`) without occupying RAM with active UI components.
 2. **On-Demand Jetpack Compose for TV Interface:** When an Apple device initiates a mirror session, the service instantly launches the playback activity, connects the C++ NDK video stream directly to Android's hardware `MediaCodec`, and terminates automatically when the session teardown occurs—returning the TV to whatever app was previously open.
 
 ---
@@ -79,18 +79,18 @@ The automated packaging engine produces both universal and split-architecture bu
 
 | Package | Target | Size | Description |
 | :--- | :--- | :---: | :--- |
-| `AirPlayTV-v1.0.0-universal.apk` | Universal | ~11 MB | Single APK containing `arm64-v8a`, `armeabi-v7a`, and `x86_64`. |
-| `AirPlayTV-v1.0.0-arm64-v8a.apk` | 64-bit ARM | ~8.9 MB | Optimized for modern 64-bit Android TV & Google TV devices. |
-| `AirPlayTV-v1.0.0-armeabi-v7a.apk` | 32-bit ARM | ~8.5 MB | Optimized for legacy 32-bit Android TV boxes and sticks. |
-| `AirPlayTV-v1.0.0-x86_64.apk` | 64-bit x86 | ~8.9 MB | Optimized for Android TV emulators and Intel/AMD hardware. |
-| `AirPlayTV-v1.0.0-release.aab` | Google Play | ~10 MB | Official Android App Bundle for Google Play Console distribution. |
+| `AynaCastTV-v1.0.0-universal.apk` | Universal | ~12 MB | Single APK containing `arm64-v8a`, `armeabi-v7a`, and `x86_64`. |
+| `AynaCastTV-v1.0.0-arm64-v8a.apk` | 64-bit ARM | ~9.5 MB | Optimized for modern 64-bit Android TV & Google TV devices. |
+| `AynaCastTV-v1.0.0-armeabi-v7a.apk` | 32-bit ARM | ~9.0 MB | Optimized for legacy 32-bit Android TV boxes and sticks. |
+| `AynaCastTV-v1.0.0-x86_64.apk` | 64-bit x86 | ~9.5 MB | Optimized for Android TV emulators and Intel/AMD hardware. |
+| `AynaCastTV-v1.0.0-release.aab` | Google Play | ~11 MB | Official Android App Bundle for Google Play Console distribution. |
 
 ---
 
 ## 🛠️ Build & Package Instructions
 
 ### 1. Using macOS Finder (One-Click)
-Double-click [`AirPlayTV-Package.command`](AirPlayTV-Package.command) in the project root. It will compile all release APKs and the AAB bundle, and automatically open the `dist/` folder when finished.
+Double-click [`AynaCastTV-Package.command`](AynaCastTV-Package.command) in the project root. It will compile all release APKs and the AAB bundle, and automatically open the `dist/` folder when finished.
 
 ### 2. Using Terminal Command
 ```bash

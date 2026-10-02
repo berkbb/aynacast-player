@@ -3,7 +3,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "=========================================================="
-echo "    AirPlay TV — Release Paketleme Motoru (macOS)         "
+echo "    AynaCast TV — Release Paketleme Motoru (macOS)       "
 echo "    (Universal APK, ARM64, ARM7, x64, AAB Bundle)        "
 echo "=========================================================="
 echo ""

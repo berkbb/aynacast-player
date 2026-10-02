@@ -1,6 +1,6 @@
-# Development Guide — AirPlay TV Receiver
+# Development Guide — AynaCast TV Receiver
 
-This document details the engineering specifications, build requirements, NDK architecture, and testing guidelines for the **AirPlay TV Receiver** project.
+This document details the engineering specifications, build requirements, NDK architecture, and testing guidelines for the **AynaCast TV Receiver** (`com.babadogan.aynacast.tv`) project.
 
 ---
 
@@ -35,12 +35,14 @@ jetpack_compose_airplay/
 │   ├── src/main/cpp/                     # Native C/C++ Engine (libairplaycore.so)
 │   │   ├── CMakeLists.txt                # CMake 4.x NDK build configuration
 │   │   ├── airplay_protocol.h            # Data structures, frame packets, and state models
-│   │   ├── airplay_crypto.h / .cpp       # Curve25519 & FairPlay handshake simulator
-│   │   ├── raop_rtsp_server.h / .cpp     # RTSP port 7000 listener and /info plist responder
+│   │   ├── airplay_crypto.h / .cpp       # Ed25519, Curve25519 ECDH & pair-verify cryptographic engine
+│   │   ├── tweetnacl.c / .h              # Self-contained public domain crypto primitives
+│   │   ├── aes.c / .h                    # AES-128-CTR stream encryption
+│   │   ├── raop_rtsp_server.h / .cpp     # RTSP port 7000 listener, dynamic /info plist, TCP 7100 video server
 │   │   ├── h264_stream_parser.h / .cpp   # AVCC-to-Annex B demuxer & SPS/PPS extractor
 │   │   └── airplay_jni.cpp               # JNI bridge exposing callbacks to Kotlin
 │   │
-│   ├── src/main/java/com/airplay/tv/
+│   ├── src/main/java/com/babadogan/aynacast/tv/
 │   │   ├── engine/
 │   │   │   ├── AirPlayNativeBridge.kt    # JNI interface and listener signatures
 │   │   │   ├── VideoDecoderEngine.kt     # Low-latency MediaCodec AVC decoder (KEY_LOW_LATENCY)
@@ -63,7 +65,7 @@ jetpack_compose_airplay/
 │   │       ├── AndroidDeviceType.kt      # Television form-factor detector
 │   │       └── NotificationPermission.kt # Android 13+ POST_NOTIFICATIONS handler
 │   │
-│   └── src/test/java/com/airplay/tv/     # Unit tests verifying bilingual parity and models
+│   └── src/test/java/com/babadogan/aynacast/tv/ # Unit tests verifying bilingual parity and models
 │       ├── AirPlayStringsTest.kt
 │       ├── AppSettingsTest.kt
 │       └── DeviceIdentityHelperTest.kt
@@ -140,12 +142,12 @@ The automated release workflow compiles both universal and split APKs alongside 
 ./package_tv.sh release
 
 # Or double-click in macOS Finder
-./AirPlayTV-Package.command
+./AynaCastTV-Package.command
 ```
 
 Output directory: `dist/`
-- `AirPlayTV-v1.0.0-universal.apk` (All architectures)
-- `AirPlayTV-v1.0.0-arm64-v8a.apk` (ARM64 only)
-- `AirPlayTV-v1.0.0-armeabi-v7a.apk` (ARM7 only)
-- `AirPlayTV-v1.0.0-x86_64.apk` (x86_64 only)
-- `AirPlayTV-v1.0.0-release.aab` (Google Play Bundle)
+- `AynaCastTV-v1.0.0-universal.apk` (All architectures)
+- `AynaCastTV-v1.0.0-arm64-v8a.apk` (ARM64 only)
+- `AynaCastTV-v1.0.0-armeabi-v7a.apk` (ARM7 only)
+- `AynaCastTV-v1.0.0-x86_64.apk` (x86_64 only)
+- `AynaCastTV-v1.0.0-release.aab` (Google Play Bundle)

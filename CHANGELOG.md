@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the **AirPlay TV Receiver** project will be documented in this file.
+All notable changes to the **AynaCast TV Receiver** (`com.babadogan.aynacast.tv`) project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-10-02
 
 ### Added
+- **Rebranding & Package Architecture:**
+  - Rebranded to **AynaCast TV** combining Turkish ("Ayna" - Mirror) and English ("Cast" - Stream).
+  - Package ID and namespace updated to `com.babadogan.aynacast.tv`.
+- **AirPlay Mirroring Cryptographic Handshake & Video Socket:**
+  - Integrated TweetNaCl (Ed25519, Curve25519 ECDH, SHA-512) and AES-128-CTR in C++ NDK engine.
+  - Implemented authentic Ed25519 signing and Curve25519 ECDH key derivation for `/pair-verify` and `/pair-setup`.
+  - Added dedicated TCP Port 7100 Video Server socket for receiving live iOS mirror stream and dispatching SPS/PPS and H.264 NALUs to Android `MediaCodec`.
+  - Fixed TV remote D-Pad navigation, tab layout constraints, and contrast borders in Jetpack Compose UI.
 - **Native C++ AirPlay Engine (`libairplaycore.so`):**
   - RTSP server on TCP port 7000 supporting `OPTIONS`, `GET /info` (Apple XML plist), `POST /pair-setup`, `POST /pair-verify`, `POST /fp-setup`, `SETUP`, `RECORD`, `TEARDOWN`, `PAUSE`, `FLUSH`, `GET_PARAMETER`, and `SET_PARAMETER`.
   - Curve25519 diffie-hellman key exchange simulation and ChaCha20 stream payload decrypter.
