@@ -63,6 +63,14 @@ void H264StreamParser::parseSpsPps(const uint8_t* payload, size_t length) {
 void H264StreamParser::parsePayload(const uint8_t* payload, size_t length, uint64_t pts) {
     if (!payload || length < 4) return;
 
+    static int payloadLogCount = 0;
+    if (payloadLogCount++ < 10) {
+        LOGI("parsePayload len=%zu: %02x %02x %02x %02x %02x %02x %02x %02x",
+             length, payload[0], payload[1], payload[2], payload[3],
+             (length > 4 ? payload[4] : 0), (length > 5 ? payload[5] : 0),
+             (length > 6 ? payload[6] : 0), (length > 7 ? payload[7] : 0));
+    }
+
     size_t offset = 0;
     std::vector<uint8_t> annexBBuffer;
     annexBBuffer.reserve(length + 64);

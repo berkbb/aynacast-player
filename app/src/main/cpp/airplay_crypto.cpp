@@ -58,7 +58,9 @@ AirPlayCrypto::AirPlayCrypto() {
     initializeKeys();
 }
 
-AirPlayCrypto::~AirPlayCrypto() = default;
+AirPlayCrypto::~AirPlayCrypto() {
+    resetSessionCrypto();
+}
 
 void AirPlayCrypto::initializeKeys() {
     serverEd25519Pk_.resize(32);
@@ -398,6 +400,11 @@ bool parseBplistSetup(const std::vector<uint8_t>& data,
             } else if (k.strVal == "eiv") {
                 ParsedVal v = parseObj(kv.second);
                 if (v.type == ParsedVal::DATA) outEiv = v.dataVal;
+            } else if (k.strVal == "streamConnectionID") {
+                ParsedVal v = parseObj(kv.second);
+                if (v.type == ParsedVal::INT) {
+                    outStreamConnectionId = v.intVal;
+                }
             } else if (k.strVal == "streams") {
                 ParsedVal v = parseObj(kv.second);
                 if (v.type == ParsedVal::ARRAY) {
@@ -419,30 +426,53 @@ bool parseBplistSetup(const std::vector<uint8_t>& data,
             }
         }
     }
-    return !outEkey.empty();
+    return !outEkey.empty() || outStreamConnectionId != 0;
 }
 
 } // anonymous namespace
 
 bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& outStreamConnectionId) {
     LOGI("Processing SETUP request (body size: %zu)", reqBody.size());
+    if (reqBody.size() > 0 && reqBody.size() <= 1024) {
+        LOGI("SETUP reqBody hex: %s", hexEncode(reqBody.data(), reqBody.size()).c_str());
+    }
+
     std::vector<uint8_t> ekey;
     std::vector<uint8_t> eiv;
     uint64_t parsedId = 0;
     parseBplistSetup(reqBody, ekey, eiv, parsedId);
-    if (parsedId != 0) {
-        outStreamConnectionId = parsedId;
-    }
 
     // Fallback: search raw bytes for streamConnectionID or ekey if bplist parser missed anything
+    if (parsedId == 0 && reqBody.size() > 30) {
+        const char streamIdMarker[] = "streamConnectionID";
+        auto it = std::search(reqBody.begin(), reqBody.end(), streamIdMarker, streamIdMarker + 18);
+        if (it != reqBody.end()) {
+            size_t pos = std::distance(reqBody.begin(), it) + 18;
+            while (pos + 9 <= reqBody.size()) {
+                if (reqBody[pos] == 0x13) { // 8-byte uint marker in bplist
+                    parsedId = readBigEndianUInt(reqBody.data() + pos + 1, 8);
+                    LOGI("Found streamConnectionID via 0x13 marker: %llu", (unsigned long long)parsedId);
+                    break;
+                }
+                pos++;
+            }
+        }
+    }
+
     if (ekey.empty() && reqBody.size() > 80) {
         const char ekeyMarker[] = "ekey";
         auto it = std::search(reqBody.begin(), reqBody.end(), ekeyMarker, ekeyMarker + 4);
         if (it != reqBody.end()) {
             size_t pos = std::distance(reqBody.begin(), it) + 4;
             while (pos + 72 <= reqBody.size()) {
-                if (reqBody[pos] == 0x4F || reqBody[pos] == 0x48) {
-                    ekey.assign(reqBody.begin() + pos + 2, reqBody.begin() + pos + 2 + 72);
+                // Look for data marker (0x4F 0x10 0x48 or 0x48)
+                if (reqBody[pos] == 0x4F && pos + 3 + 72 <= reqBody.size() && reqBody[pos + 1] == 0x10 && reqBody[pos + 2] == 0x48) {
+                    ekey.assign(reqBody.begin() + pos + 3, reqBody.begin() + pos + 3 + 72);
+                    LOGI("Found 72-byte ekey via 0x4F 0x10 0x48 marker!");
+                    break;
+                } else if (reqBody[pos] == 0x48 && pos + 1 + 72 <= reqBody.size()) {
+                    ekey.assign(reqBody.begin() + pos + 1, reqBody.begin() + pos + 1 + 72);
+                    LOGI("Found 72-byte ekey via 0x48 marker!");
                     break;
                 }
                 pos++;
@@ -455,27 +485,47 @@ bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& o
         uint8_t rawAesKey[16] = {0};
         playfair_decrypt(fpKeyMsg_.data(), ekey.data(), rawAesKey);
 
-        // Derive video session AES key and IV:
-        // 1. eaeskey = SHA-512(rawAesKey(16) + sharedSecret(32))
-        uint8_t eaesMat[48] = {0};
-        std::memcpy(eaesMat, rawAesKey, 16);
+        // Audio/session AES key derivation matching UxPlay:
+        // If pairing ecdh_secret exists (bit 27 ON):
+        //   aeskey = SHA-512(rawAesKey(16) + sharedSecret(32))[0..15]
+        // Else (legacy pairing disabled / bit 27 OFF):
+        //   aeskey = rawAesKey (16 bytes, unhashed!)
+        uint8_t finalAesKey[16] = {0};
         if (sharedSecret_.size() == 32) {
+            LOGI("Hashing FairPlay rawAesKey with Curve25519 sharedSecret (32 bytes)...");
+            uint8_t eaesMat[48] = {0};
+            std::memcpy(eaesMat, rawAesKey, 16);
             std::memcpy(eaesMat + 16, sharedSecret_.data(), 32);
+            uint8_t eaesHash[64] = {0};
+            crypto_hash(eaesHash, eaesMat, 48);
+            std::memcpy(finalAesKey, eaesHash, 16);
+        } else {
+            LOGI("Using pure FairPlay rawAesKey (no pairing secret, bit 27 disabled).");
+            std::memcpy(finalAesKey, rawAesKey, 16);
         }
-        uint8_t eaeskey[64] = {0};
-        crypto_hash(eaeskey, eaesMat, 48);
 
-        // 2. hash1 = SHA-512("AirPlayStreamKey" + streamConnectionId + eaeskey[0..15])
-        std::string skeyStr = "AirPlayStreamKey" + std::to_string(outStreamConnectionId);
+        sessionAesKey_.assign(finalAesKey, finalAesKey + 16);
+        hasSessionAesKey_ = true;
+        LOGI("Saved session AES key: %s", hexEncode(sessionAesKey_.data(), 16).c_str());
+    }
+
+    if (parsedId != 0) {
+        streamConnectionId_ = parsedId;
+        outStreamConnectionId = parsedId;
+        LOGI("Identified streamConnectionID from SETUP bplist: %llu", (unsigned long long)streamConnectionId_);
+    }
+
+    // Derive Video AES key & IV matching UxPlay mirror_buffer_init_aes as soon as both are present:
+    if (hasSessionAesKey_ && streamConnectionId_ != 0) {
+        std::string skeyStr = "AirPlayStreamKey" + std::to_string(streamConnectionId_);
         std::vector<uint8_t> skeyMat(skeyStr.begin(), skeyStr.end());
-        skeyMat.insert(skeyMat.end(), eaeskey, eaeskey + 16);
+        skeyMat.insert(skeyMat.end(), sessionAesKey_.begin(), sessionAesKey_.end());
         uint8_t hash1[64] = {0};
         crypto_hash(hash1, skeyMat.data(), skeyMat.size());
 
-        // 3. hash2 = SHA-512("AirPlayStreamIV" + streamConnectionId + eaeskey[0..15])
-        std::string sivStr = "AirPlayStreamIV" + std::to_string(outStreamConnectionId);
+        std::string sivStr = "AirPlayStreamIV" + std::to_string(streamConnectionId_);
         std::vector<uint8_t> sivMat(sivStr.begin(), sivStr.end());
-        sivMat.insert(sivMat.end(), eaeskey, eaeskey + 16);
+        sivMat.insert(sivMat.end(), sessionAesKey_.begin(), sessionAesKey_.end());
         uint8_t hash2[64] = {0};
         crypto_hash(hash2, sivMat.data(), sivMat.size());
 
@@ -483,30 +533,89 @@ bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& o
         videoAesIv_.assign(hash2, hash2 + 16);
         hasVideoKey_ = true;
 
-        LOGI("Video AES key established: %s, streamConnectionID: %llu",
-             hexEncode(videoAesKey_.data(), 16).c_str(), (unsigned long long)outStreamConnectionId);
+        if (videoAesCtx_) {
+            free(videoAesCtx_);
+            videoAesCtx_ = nullptr;
+        }
+        struct AES_ctx* ctx = static_cast<struct AES_ctx*>(calloc(1, sizeof(struct AES_ctx)));
+        if (ctx) {
+            AES_init_ctx_iv(ctx, videoAesKey_.data(), videoAesIv_.data());
+            videoAesCtx_ = ctx;
+        }
+        nextDecryptCount_ = 0;
+        std::memset(og_, 0, sizeof(og_));
+
+        LOGI("Video AES key established: %s, IV: %s, streamConnectionID: %llu",
+             hexEncode(videoAesKey_.data(), 16).c_str(),
+             hexEncode(videoAesIv_.data(), 16).c_str(),
+             (unsigned long long)streamConnectionId_);
         return true;
     }
 
-    LOGI("SETUP processed without video AES encryption requirement (ekey size: %zu)", ekey.size());
+    LOGI("SETUP processed (ekey size: %zu, streamConnectionId: %llu, hasSessionAesKey: %d)",
+         ekey.size(), (unsigned long long)streamConnectionId_, hasSessionAesKey_);
     return true;
 }
 
 bool AirPlayCrypto::decryptVideoPayload(uint8_t* payload, size_t length) {
-    if (!payload || length == 0 || !hasVideoKey_ || videoAesKey_.size() != 16 || videoAesIv_.size() != 16) {
+    if (!payload || length == 0 || !hasVideoKey_ || !videoAesCtx_) {
         return false;
     }
-    struct AES_ctx aesCtx;
-    AES_init_ctx_iv(&aesCtx, videoAesKey_.data(), videoAesIv_.data());
-    AES_CTR_xcrypt_buffer(&aesCtx, payload, length);
+
+    struct AES_ctx* ctx = static_cast<struct AES_ctx*>(videoAesCtx_);
+
+    // Continuous stateful AES-CTR stream decryption (matching UxPlay / AirPlayServer mirror_buffer)
+    // 1. Process remainder from previous packet
+    if (nextDecryptCount_ > 0) {
+        int countToXor = std::min(nextDecryptCount_, static_cast<int>(length));
+        for (int i = 0; i < countToXor; ++i) {
+            payload[i] = (payload[i] ^ og_[(16 - nextDecryptCount_) + i]);
+        }
+
+        if (static_cast<int>(length) <= nextDecryptCount_) {
+            nextDecryptCount_ -= length;
+            return true;
+        }
+    }
+
+    // 2. Process aligned 16-byte blocks
+    int encryptlen = ((static_cast<int>(length) - nextDecryptCount_) / 16) * 16;
+    if (encryptlen > 0) {
+        AES_CTR_xcrypt_buffer(ctx, payload + nextDecryptCount_, encryptlen);
+    }
+
+    // 3. Process remaining unaligned bytes (< 16) and preserve keystream
+    int restlen = (static_cast<int>(length) - nextDecryptCount_) % 16;
+    int reststart = static_cast<int>(length) - restlen;
+    nextDecryptCount_ = 0;
+
+    if (restlen > 0) {
+        std::memset(og_, 0, sizeof(og_));
+        std::memcpy(og_, payload + reststart, restlen);
+        AES_CTR_xcrypt_buffer(ctx, og_, 16);
+        for (int j = 0; j < restlen; ++j) {
+            payload[reststart + j] = og_[j];
+        }
+        nextDecryptCount_ = 16 - restlen;
+    }
+
     return true;
 }
 
 void AirPlayCrypto::resetSessionCrypto() {
     fpKeyMsg_.clear();
+    sessionAesKey_.clear();
+    hasSessionAesKey_ = false;
+    streamConnectionId_ = 0;
     videoAesKey_.clear();
     videoAesIv_.clear();
     hasVideoKey_ = false;
+    if (videoAesCtx_) {
+        free(videoAesCtx_);
+        videoAesCtx_ = nullptr;
+    }
+    nextDecryptCount_ = 0;
+    std::memset(og_, 0, sizeof(og_));
     LOGI("Session crypto reset.");
 }
 

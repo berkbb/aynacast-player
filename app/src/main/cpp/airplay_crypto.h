@@ -47,9 +47,18 @@ private:
     std::vector<uint8_t> aesKey_;
     std::vector<uint8_t> aesIv_;
 
+    std::vector<uint8_t> sessionAesKey_;
+    bool hasSessionAesKey_{false};
+    uint64_t streamConnectionId_{0};
+
     std::vector<uint8_t> videoAesKey_;
     std::vector<uint8_t> videoAesIv_;
     bool hasVideoKey_{false};
+
+    // Continuous stateful AES-CTR context across frames (matches UxPlay mirror_buffer)
+    void* videoAesCtx_{nullptr};
+    int nextDecryptCount_{0};
+    uint8_t og_[16]{0};
 
     bool keysInitialized_{false};
 };
