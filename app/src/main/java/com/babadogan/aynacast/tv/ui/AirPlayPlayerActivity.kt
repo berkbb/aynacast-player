@@ -131,7 +131,6 @@ fun AirPlayPlayerScreen(
             modifier = Modifier.aspectRatio(aspect),
             factory = { context ->
                 SurfaceView(context).apply {
-                    setZOrderMediaOverlay(true)
                     holder.addCallback(object : SurfaceHolder.Callback {
                         override fun surfaceCreated(holder: SurfaceHolder) {
                             VideoDecoderEngine.bindOutputSurface(holder.surface)

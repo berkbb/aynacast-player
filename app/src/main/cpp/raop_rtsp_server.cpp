@@ -7,6 +7,9 @@
 #include <sstream>
 #include <cstring>
 #include <vector>
+#include <netinet/tcp.h>
+#include <cinttypes>
+#include "alac.h"
 
 #define TAG "AirPlayRTSP"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -119,8 +122,9 @@ bool RaopRtspServer::start(int rtspPort, int videoPort) {
     if (videoServerFd_ >= 0) {
         videoTcpThread_ = std::thread(&RaopRtspServer::videoTcpLoop, this);
     }
+    audioThread_ = std::thread(&RaopRtspServer::audioUdpLoop, this);
 
-    LOGI("AirPlay RTSP Server started on port %d, Video TCP on port %d", rtspPort_, videoPort_);
+    LOGI("AirPlay RTSP Server started on port %d, Video TCP on port %d, Audio UDP on %d", rtspPort_, videoPort_, audioDataPort_);
     return true;
 }
 
@@ -142,6 +146,18 @@ void RaopRtspServer::stop() {
         videoServerFd_ = -1;
     }
 
+    if (audioDataFd_ >= 0) {
+        shutdown(audioDataFd_, SHUT_RDWR);
+        close(audioDataFd_);
+        audioDataFd_ = -1;
+    }
+
+    if (audioControlFd_ >= 0) {
+        shutdown(audioControlFd_, SHUT_RDWR);
+        close(audioControlFd_);
+        audioControlFd_ = -1;
+    }
+
     if (serverThread_.joinable()) {
         serverThread_.join();
     }
@@ -150,7 +166,16 @@ void RaopRtspServer::stop() {
         videoTcpThread_.join();
     }
 
-    LOGI("AirPlay RTSP & Video Servers stopped cleanly.");
+    if (audioThread_.joinable()) {
+        audioThread_.join();
+    }
+
+    if (alacDecoder_) {
+        alac_free(alacDecoder_);
+        alacDecoder_ = nullptr;
+    }
+
+    LOGI("AirPlay RTSP, Video & Audio Servers stopped cleanly.");
 }
 
 void RaopRtspServer::serverLoop() {
@@ -189,9 +214,15 @@ void RaopRtspServer::videoTcpLoop() {
             break;
         }
 
+        int nodelay = 1;
+        setsockopt(clientFd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+        int rcvbuf = 2 * 1024 * 1024;
+        setsockopt(clientFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+
         char clientIp[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
-        LOGI("Accepted incoming video streaming TCP connection from %s:%d", clientIp, ntohs(clientAddr.sin_port));
+        LOGI("Accepted incoming video streaming TCP connection from %s:%d (TCP_NODELAY=1, SO_RCVBUF=2MB)",
+             clientIp, ntohs(clientAddr.sin_port));
 
         std::thread([this, clientFd]() {
             handleVideoClientConnection(clientFd);
@@ -200,6 +231,11 @@ void RaopRtspServer::videoTcpLoop() {
 }
 
 void RaopRtspServer::handleVideoClientConnection(int clientFd) {
+    int nodelay = 1;
+    setsockopt(clientFd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+    int rcvbuf = 2 * 1024 * 1024;
+    setsockopt(clientFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+
     struct timeval tv{5, 0}; // 5-second socket timeout
     setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
@@ -213,6 +249,9 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
     static constexpr size_t VIDEO_HEADER_SIZE = 128;
 
     uint8_t header[VIDEO_HEADER_SIZE];
+    std::vector<uint8_t> payload;
+    payload.reserve(256 * 1024);
+    uint64_t vPacketCount = 0;
 
     while (isRunning_.load()) {
         size_t headerRead = 0;
@@ -239,7 +278,11 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
         uint64_t pts = 0;
         std::memcpy(&pts, header + 8, sizeof(pts));
 
-        LOGI("Video packet: type=0x%02x payloadLen=%u", packetType, payloadLen);
+        vPacketCount++;
+        if (vPacketCount % 300 == 1) {
+            LOGI("Video stream active: frame #%" PRIu64 " type=0x%02x payloadLen=%u",
+                 vPacketCount, packetType, payloadLen);
+        }
 
         if (payloadLen == 0) {
             continue;
@@ -250,7 +293,10 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
             continue;
         }
 
-        std::vector<uint8_t> payload(payloadLen);
+        if (payload.size() < payloadLen) {
+            payload.resize(payloadLen);
+        }
+
         size_t payloadRead = 0;
         while (payloadRead < payloadLen) {
             ssize_t n = recv(clientFd, payload.data() + payloadRead, payloadLen - payloadRead, 0);
@@ -267,12 +313,12 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
 
         if (packetType == 0x01) {
             LOGI("Video SPS/PPS config packet: payloadLen=%u", payloadLen);
-            videoParser_.parseSpsPps(payload.data(), payload.size());
+            videoParser_.parseSpsPps(payload.data(), payloadLen);
         } else if (packetType == 0x00) {
             if (crypto_.hasVideoKey()) {
-                crypto_.decryptVideoPayload(payload.data(), payload.size());
+                crypto_.decryptVideoPayload(payload.data(), payloadLen);
             }
-            videoParser_.parsePayload(payload.data(), payload.size(), pts);
+            videoParser_.parsePayload(payload.data(), payloadLen, pts);
         } else if (packetType == 0x05) {
             // Periodic AirPlay mirror streaming performance report (unencrypted plist, sent ~1/s)
             // Do not decrypt or forward to H.264 parser.
@@ -405,6 +451,22 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
            << "      <key>widthPhysical</key><integer>0</integer>\n"
            << "    </dict>\n"
            << "  </array>\n"
+           << "  <key>initialVolume</key><real>0.0</real>\n"
+           << "  <key>audioLatencies</key>\n"
+           << "  <array>\n"
+           << "    <dict>\n"
+           << "      <key>audioType</key><string>default</string>\n"
+           << "      <key>inputLatencyMicros</key><false/>\n"
+           << "      <key>outputLatencyMicros</key><false/>\n"
+           << "      <key>type</key><integer>100</integer>\n"
+           << "    </dict>\n"
+           << "    <dict>\n"
+           << "      <key>audioType</key><string>default</string>\n"
+           << "      <key>inputLatencyMicros</key><false/>\n"
+           << "      <key>outputLatencyMicros</key><false/>\n"
+           << "      <key>type</key><integer>101</integer>\n"
+           << "    </dict>\n"
+           << "  </array>\n"
            << "  <key>audioFormats</key>\n"
            << "  <array>\n"
            << "    <dict>\n"
@@ -444,26 +506,56 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
         resp.headers["Content-Type"] = "application/x-apple-binary-plist";
         resp.headers["Session"] = "1";
 
-        // Apple AirPlay mirroring SETUP response binary plist
-        // Schema: { "eventPort": 7000, "timingPort": 7010, "streams": [{ "dataPort": videoPort_, "type": 110 }] }
-        static uint8_t baseSetupResponse[] = {
-            98, 112, 108, 105, 115, 116, 48, 48, 211, 1, 2, 3, 4, 5, 11, 89, 101, 118, 101, 110, 116, 80, 111, 114, 116, 
-            87, 115, 116, 114, 101, 97, 109, 115, 90, 116, 105, 109, 105, 110, 103, 80, 111, 114, 116, 
-            17, 27, 88, // eventPort = 7000 (0x1B58)
-            161, 6, 210, 7, 8, 9, 10, 88, 100, 97, 116, 97, 80, 111, 114, 116, 84, 116, 121, 112, 101, 
-            17, 27, 188, // dataPort = 7100 (0x1BBC) at bytes 69, 70
-            16, 110, // type = 110
-            17, 27, 98, // timingPort = 7010 (0x1B62) at bytes 74, 75
-            8, 15, 25, 33, 44, 47, 49, 54, 63, 68, 71, 73, 
-            0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 12, 
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 76
-        };
-        uint16_t vPort = static_cast<uint16_t>(videoPort_);
-        baseSetupResponse[69] = static_cast<uint8_t>((vPort >> 8) & 0xFF);
-        baseSetupResponse[70] = static_cast<uint8_t>(vPort & 0xFF);
+        std::string bStr(reinterpret_cast<const char*>(req.body.data()), req.body.size());
+        bool hasEkey = (bStr.find("ekey") != std::string::npos);
+        bool hasStreamConnId = (streamConnectionId != 0 || bStr.find("streamConnectionID") != std::string::npos);
+        bool isAudioSetup = (bStr.find("spf") != std::string::npos || (bStr.find("controlPort") != std::string::npos && !hasStreamConnId && !hasEkey));
 
-        resp.body.assign(baseSetupResponse, baseSetupResponse + sizeof(baseSetupResponse));
-        LOGI("Responded to SETUP with streams: dataPort=%d, type=110", videoPort_);
+        if (!isAudioSetup) {
+            // Apple AirPlay mirroring Video SETUP response binary plist
+            // Schema: { "eventPort": 7000, "timingPort": 7010, "streams": [{ "dataPort": videoPort_, "type": 110 }] }
+            static uint8_t baseVideoSetupResponse[] = {
+                98, 112, 108, 105, 115, 116, 48, 48, 211, 1, 2, 3, 4, 5, 11, 89, 101, 118, 101, 110, 116, 80, 111, 114, 116, 
+                87, 115, 116, 114, 101, 97, 109, 115, 90, 116, 105, 109, 105, 110, 103, 80, 111, 114, 116, 
+                17, 27, 88, // eventPort = 7000 (0x1B58)
+                161, 6, 210, 7, 8, 9, 10, 88, 100, 97, 116, 97, 80, 111, 114, 116, 84, 116, 121, 112, 101, 
+                17, 27, 188, // dataPort = 7100 (0x1BBC) at bytes 69, 70
+                16, 110, // type = 110
+                17, 27, 98, // timingPort = 7010 (0x1B62) at bytes 74, 75
+                8, 15, 25, 33, 44, 47, 49, 54, 63, 68, 71, 73, 
+                0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 12, 
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 76
+            };
+            uint16_t vPort = static_cast<uint16_t>(videoPort_);
+            baseVideoSetupResponse[69] = static_cast<uint8_t>((vPort >> 8) & 0xFF);
+            baseVideoSetupResponse[70] = static_cast<uint8_t>(vPort & 0xFF);
+
+            resp.body.assign(baseVideoSetupResponse, baseVideoSetupResponse + sizeof(baseVideoSetupResponse));
+            LOGI("Responded to Video SETUP with streams: dataPort=%d, type=110", videoPort_);
+        } else {
+            // Apple AirPlay mirroring Audio SETUP response binary plist
+            // Schema: { "streams": [{ "dataPort": audioDataPort_, "controlPort": audioControlPort_, "type": 96 }] }
+            static uint8_t baseAudioSetupResponse[] = {
+                98, 112, 108, 105, 115, 116, 48, 48, 209, 1, 2, 87, 115, 116, 114, 101, 97, 109, 115, 
+                161, 3, 211, 4, 5, 6, 7, 8, 9, 91, 99, 111, 110, 116, 114, 111, 108, 80, 111, 114, 116, 
+                88, 100, 97, 116, 97, 80, 111, 114, 116, 84, 116, 121, 112, 101, 
+                17, 27, 100, // controlPort = 7012 (0x1B64) at index 55, 56
+                17, 27, 99,  // dataPort = 7011 (0x1B63) at index 58, 59
+                16, 96,      // type = 96 at index 61
+                8, 11, 19, 21, 28, 40, 49, 54, 57, 60, 
+                0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 10, 
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62
+            };
+            uint16_t cPort = static_cast<uint16_t>(audioControlPort_);
+            baseAudioSetupResponse[55] = static_cast<uint8_t>((cPort >> 8) & 0xFF);
+            baseAudioSetupResponse[56] = static_cast<uint8_t>(cPort & 0xFF);
+            uint16_t dPort = static_cast<uint16_t>(audioDataPort_);
+            baseAudioSetupResponse[58] = static_cast<uint8_t>((dPort >> 8) & 0xFF);
+            baseAudioSetupResponse[59] = static_cast<uint8_t>(dPort & 0xFF);
+
+            resp.body.assign(baseAudioSetupResponse, baseAudioSetupResponse + sizeof(baseAudioSetupResponse));
+            LOGI("Responded to Audio SETUP with streams: dataPort=%d, controlPort=%d, type=96", audioDataPort_, audioControlPort_);
+        }
     } else if (req.method == "RECORD") {
         isStreaming_.store(true);
         videoParser_.reset();
@@ -490,14 +582,17 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
     } else if (req.method == "PAUSE" || req.method == "FLUSH") {
         resp.headers["Session"] = "1";
     } else if (req.method == "TEARDOWN") {
+        LOGI("Handling TEARDOWN request (body size=%zu)", req.body.size());
         bool teardownAudioOnly = false;
-        if (!req.body.empty() && req.body.size() > 16) {
+        if (!req.body.empty()) {
             std::string bodyStr(reinterpret_cast<const char*>(req.body.data()), req.body.size());
-            if (bodyStr.find("type") != std::string::npos &&
-                bodyStr.find("\x60") != std::string::npos && // 96
-                bodyStr.find("\x6e") == std::string::npos) { // 110
+            bool hasAudioType = (bodyStr.find("\x60") != std::string::npos); // 96
+            bool hasVideoType = (bodyStr.find("\x6e") != std::string::npos); // 110
+            if (hasAudioType && !hasVideoType) {
                 teardownAudioOnly = true;
             }
+            LOGI("TEARDOWN inspection: hasAudio=%d, hasVideo=%d, teardownAudioOnly=%d",
+                 hasAudioType, hasVideoType, teardownAudioOnly);
         }
         if (!teardownAudioOnly) {
             isStreaming_.store(false);
@@ -510,6 +605,172 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
     }
 
     return resp;
+}
+
+void RaopRtspServer::audioUdpLoop() {
+    LOGI("Audio UDP receiver thread started (Data: %d, Control: %d)", audioDataPort_, audioControlPort_);
+
+    audioDataFd_ = socket(AF_INET, SOCK_DGRAM, 0);
+    audioControlFd_ = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (audioDataFd_ < 0 || audioControlFd_ < 0) {
+        LOGE("Failed to create audio UDP sockets: %s", strerror(errno));
+        return;
+    }
+
+    int opt = 1;
+    setsockopt(audioDataFd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(audioControlFd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    int rcvBuf = 512 * 1024;
+    setsockopt(audioDataFd_, SOL_SOCKET, SO_RCVBUF, &rcvBuf, sizeof(rcvBuf));
+
+    sockaddr_in dataAddr{};
+    dataAddr.sin_family = AF_INET;
+    dataAddr.sin_addr.s_addr = INADDR_ANY;
+    dataAddr.sin_port = htons(static_cast<uint16_t>(audioDataPort_));
+
+    if (bind(audioDataFd_, reinterpret_cast<sockaddr*>(&dataAddr), sizeof(dataAddr)) < 0) {
+        LOGE("Failed to bind audio data UDP port %d: %s", audioDataPort_, strerror(errno));
+        return;
+    }
+
+    sockaddr_in controlAddr{};
+    controlAddr.sin_family = AF_INET;
+    controlAddr.sin_addr.s_addr = INADDR_ANY;
+    controlAddr.sin_port = htons(static_cast<uint16_t>(audioControlPort_));
+
+    if (bind(audioControlFd_, reinterpret_cast<sockaddr*>(&controlAddr), sizeof(controlAddr)) < 0) {
+        LOGE("Failed to bind audio control UDP port %d: %s", audioControlPort_, strerror(errno));
+        return;
+    }
+
+    // Initialize ALAC Decoder for 16-bit 2-channel 44.1kHz stereo
+    if (!alacDecoder_) {
+        alacDecoder_ = alac_create(16, 2);
+        if (alacDecoder_) {
+            unsigned char decoderInfo[48] = {0};
+
+            auto set_u16 = [](unsigned char* buf, uint16_t val) {
+                buf[0] = static_cast<unsigned char>((val >> 8) & 0xFF);
+                buf[1] = static_cast<unsigned char>(val & 0xFF);
+            };
+            auto set_u32 = [](unsigned char* buf, uint32_t val) {
+                buf[0] = static_cast<unsigned char>((val >> 24) & 0xFF);
+                buf[1] = static_cast<unsigned char>((val >> 16) & 0xFF);
+                buf[2] = static_cast<unsigned char>((val >> 8) & 0xFF);
+                buf[3] = static_cast<unsigned char>(val & 0xFF);
+            };
+
+            set_u32(&decoderInfo[0], 48);
+            std::memcpy(&decoderInfo[4], "frma", 4);
+            std::memcpy(&decoderInfo[8], "alac", 4);
+            set_u32(&decoderInfo[12], 36);
+            std::memcpy(&decoderInfo[16], "alac", 4);
+            set_u32(&decoderInfo[20], 0);
+
+            set_u32(&decoderInfo[24], 352); // frameLength (352 samples per frame)
+            decoderInfo[28] = 0;           // compatibleVersion
+            decoderInfo[29] = 16;          // bitDepth (16-bit)
+            decoderInfo[30] = 40;          // pb (0x28)
+            decoderInfo[31] = 10;          // mb (0x0A)
+            decoderInfo[32] = 14;          // kb (0x0E)
+            decoderInfo[33] = 2;           // numChannels (stereo)
+            set_u16(&decoderInfo[34], 255); // maxRun
+            set_u32(&decoderInfo[36], 0);   // maxFrameBytes
+            set_u32(&decoderInfo[40], 0);   // avgBitRate
+            set_u32(&decoderInfo[44], 44100); // sampleRate (44100 Hz)
+
+            alac_set_info(alacDecoder_, reinterpret_cast<char*>(decoderInfo));
+            LOGI("ALAC Decoder initialized successfully (max_samples_per_frame=%u, 44100 Hz, 16-bit stereo).",
+                 alacDecoder_->setinfo_max_samples_per_frame);
+        } else {
+            LOGE("Failed to create ALAC decoder!");
+        }
+    }
+
+    std::vector<uint8_t> pcmOutput(4096);
+    uint8_t packetBuf[4096 + 32];
+    std::memset(packetBuf, 0, sizeof(packetBuf));
+    uint64_t audioPacketCount = 0;
+
+    while (isRunning_.load()) {
+        fd_set readFds;
+        FD_ZERO(&readFds);
+        FD_SET(audioDataFd_, &readFds);
+        FD_SET(audioControlFd_, &readFds);
+        int maxFd = std::max(audioDataFd_, audioControlFd_);
+
+        timeval tv{0, 100000}; // 100 ms timeout
+        int ret = select(maxFd + 1, &readFds, nullptr, nullptr, &tv);
+        if (ret <= 0) {
+            continue;
+        }
+
+        // Handle RTCP / Keepalive packets
+        if (FD_ISSET(audioControlFd_, &readFds)) {
+            sockaddr_in clientAddr{};
+            socklen_t addrLen = sizeof(clientAddr);
+            ssize_t cBytes = recvfrom(audioControlFd_, packetBuf, 4096, 0,
+                                      reinterpret_cast<sockaddr*>(&clientAddr), &addrLen);
+            (void)cBytes;
+        }
+
+        // Handle Audio RTP packets
+        if (FD_ISSET(audioDataFd_, &readFds)) {
+            sockaddr_in clientAddr{};
+            socklen_t addrLen = sizeof(clientAddr);
+            ssize_t bytesRead = recvfrom(audioDataFd_, packetBuf, 4096, 0,
+                                         reinterpret_cast<sockaddr*>(&clientAddr), &addrLen);
+            if (bytesRead < 12) {
+                continue;
+            }
+
+            uint32_t timestamp = (static_cast<uint32_t>(packetBuf[4]) << 24) |
+                                 (static_cast<uint32_t>(packetBuf[5]) << 16) |
+                                 (static_cast<uint32_t>(packetBuf[6]) << 8)  |
+                                 static_cast<uint32_t>(packetBuf[7]);
+
+            size_t payloadSize = static_cast<size_t>(bytesRead - 12);
+            uint8_t* payload = packetBuf + 12;
+
+            if (payloadSize == 0 || (payloadSize == 4 && std::memcmp(payload, "\x00\x00\x00\x00", 4) == 0)) {
+                continue;
+            }
+
+            // Zero-pad after payload to guarantee bitreader safe lookahead
+            std::memset(payload + payloadSize, 0, 16);
+
+            // Audio decryption using session AES key & IV (AES-128-CBC)
+            crypto_.decryptAudioPayload(payload, payloadSize);
+
+            // ALAC decoding to 16-bit PCM stereo
+            if (alacDecoder_ && alacDecoder_->setinfo_max_samples_per_frame > 0) {
+                int outputBytes = static_cast<int>(pcmOutput.size());
+                alac_decode_frame(alacDecoder_, payload, pcmOutput.data(), &outputBytes);
+
+                if (outputBytes > 0 && onAudioPacket_) {
+                    onAudioPacket_(pcmOutput.data(), static_cast<size_t>(outputBytes), timestamp);
+                    audioPacketCount++;
+                    if (audioPacketCount % 100 == 1) {
+                        LOGI("Audio PCM decoded & played: %d bytes (samples: %d), timestamp=%u (packet #%llu)",
+                             outputBytes, outputBytes / 4, timestamp, (unsigned long long)audioPacketCount);
+                    }
+                }
+            }
+        }
+    }
+
+    if (audioDataFd_ >= 0) {
+        close(audioDataFd_);
+        audioDataFd_ = -1;
+    }
+    if (audioControlFd_ >= 0) {
+        close(audioControlFd_);
+        audioControlFd_ = -1;
+    }
+
+    LOGI("Audio UDP receiver thread exited.");
 }
 
 } // namespace airplay

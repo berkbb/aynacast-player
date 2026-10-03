@@ -13,6 +13,7 @@ H264StreamParser::~H264StreamParser() = default;
 void H264StreamParser::reset() {
     spsBuffer_.clear();
     ppsBuffer_.clear();
+    annexBBuffer_.clear();
     spsPpsNotified_ = false;
 }
 
@@ -43,7 +44,6 @@ void H264StreamParser::parseSpsPps(const uint8_t* payload, size_t length) {
          spsBuffer_.size(), ppsBuffer_.size());
 
     // Try to log SPS width/height (profile_idc at byte 1, level at byte 3)
-    // Width/height encoded in SPS bitstream — log raw for diagnostics
     if (spsBuffer_.size() >= 4) {
         LOGI("SPS profile_idc=%d level_idc=%d (raw bytes[0..3]: %02x %02x %02x %02x)",
              spsBuffer_[1], spsBuffer_[3],
@@ -54,26 +54,16 @@ void H264StreamParser::parseSpsPps(const uint8_t* payload, size_t length) {
         spsPpsCallback_(spsBuffer_, ppsBuffer_);
         spsPpsNotified_ = true;
     }
-
-    // NOTE: Do NOT forward SPS/PPS as Annex-B video frames here.
-    // MediaCodec is configured with csd-0/csd-1 — sending them again as frames
-    // causes codec errors on many hardware decoders.
 }
 
 void H264StreamParser::parsePayload(const uint8_t* payload, size_t length, uint64_t pts) {
     if (!payload || length < 4) return;
 
-    static int payloadLogCount = 0;
-    if (payloadLogCount++ < 10) {
-        LOGI("parsePayload len=%zu: %02x %02x %02x %02x %02x %02x %02x %02x",
-             length, payload[0], payload[1], payload[2], payload[3],
-             (length > 4 ? payload[4] : 0), (length > 5 ? payload[5] : 0),
-             (length > 6 ? payload[6] : 0), (length > 7 ? payload[7] : 0));
-    }
-
     size_t offset = 0;
-    std::vector<uint8_t> annexBBuffer;
-    annexBBuffer.reserve(length + 64);
+    annexBBuffer_.clear();
+    if (annexBBuffer_.capacity() < length + 64) {
+        annexBBuffer_.reserve(length + 64);
+    }
 
     bool containsKeyFrame = false;
 
@@ -105,7 +95,7 @@ void H264StreamParser::parsePayload(const uint8_t* payload, size_t length, uint6
             }
             if (nextStart + 3 >= length) nextStart = length;
 
-            annexBBuffer.insert(annexBBuffer.end(), payload + offset, payload + nextStart);
+            annexBBuffer_.insert(annexBBuffer_.end(), payload + offset, payload + nextStart);
             offset = nextStart;
             continue;
         }
@@ -114,8 +104,8 @@ void H264StreamParser::parsePayload(const uint8_t* payload, size_t length, uint6
         if (naluLen == 0 || offset + 4 + naluLen > length) {
             // Fallback: pass remaining bytes with Annex-B start code
             const uint8_t startCode[] = {0x00, 0x00, 0x00, 0x01};
-            annexBBuffer.insert(annexBBuffer.end(), startCode, startCode + 4);
-            annexBBuffer.insert(annexBBuffer.end(), payload + offset, payload + length);
+            annexBBuffer_.insert(annexBBuffer_.end(), startCode, startCode + 4);
+            annexBBuffer_.insert(annexBBuffer_.end(), payload + offset, payload + length);
             break;
         }
 
@@ -139,14 +129,14 @@ void H264StreamParser::parsePayload(const uint8_t* payload, size_t length, uint6
 
         // Emit standard Annex B 4-byte start code
         const uint8_t startCode[] = {0x00, 0x00, 0x00, 0x01};
-        annexBBuffer.insert(annexBBuffer.end(), startCode, startCode + 4);
-        annexBBuffer.insert(annexBBuffer.end(), nalData, nalData + naluLen);
+        annexBBuffer_.insert(annexBBuffer_.end(), startCode, startCode + 4);
+        annexBBuffer_.insert(annexBBuffer_.end(), nalData, nalData + naluLen);
 
         offset += naluLen;
     }
 
-    if (!annexBBuffer.empty() && frameCallback_) {
-        frameCallback_(annexBBuffer.data(), annexBBuffer.size(), pts, containsKeyFrame);
+    if (!annexBBuffer_.empty() && frameCallback_) {
+        frameCallback_(annexBBuffer_.data(), annexBBuffer_.size(), pts, containsKeyFrame);
     }
 }
 

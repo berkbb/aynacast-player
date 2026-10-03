@@ -45,6 +45,7 @@ public:
 private:
     std::vector<uint8_t> spsBuffer_;
     std::vector<uint8_t> ppsBuffer_;
+    std::vector<uint8_t> annexBBuffer_;
     bool spsPpsNotified_{false};
 
     FrameCallback frameCallback_;

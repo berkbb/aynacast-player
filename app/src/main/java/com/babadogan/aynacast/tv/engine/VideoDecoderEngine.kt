@@ -22,7 +22,7 @@ object VideoDecoderEngine {
 
     private const val TAG = "VideoDecoderEngine"
     private const val MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_AVC
-    private const val QUEUE_CAPACITY = 200 // ample jitter buffer for 60fps streaming
+    private const val QUEUE_CAPACITY = 500 // ample jitter buffer for 60fps streaming
 
     private sealed class Task {
         class BindSurface(val surface: Surface) : Task()
@@ -164,6 +164,11 @@ object VideoDecoderEngine {
                     setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                 }
                 setInteger(MediaFormat.KEY_PRIORITY, 0)
+                // Low-latency vendor keys for MediaTek OMX and Qualcomm hardware decoders
+                setInteger("vdec-lowlatency", 1)
+                setInteger("low-latency", 1)
+                setInteger("vendor.rtc-ext-dec-low-latency.enable", 1)
+                setInteger("vendor.mtk-vdec-lowlatency.enable", 1)
             }
 
             codec.configure(format, surface, null, 0)
@@ -216,18 +221,12 @@ object VideoDecoderEngine {
         try {
             drainOutput(codec)
 
-            // For IDR keyframes, allow multiple retry attempts with drainOutput to ensure
-            // the decoder accepts the foundational reference frame!
-            var inIndex = codec.dequeueInputBuffer(10_000L)
+            var inIndex = codec.dequeueInputBuffer(5_000L)
             var retries = 0
-            while (inIndex < 0 && isKeyFrame && retries < 5) {
+            while (inIndex < 0 && retries < 10) {
                 drainOutput(codec)
-                inIndex = codec.dequeueInputBuffer(20_000L)
+                inIndex = codec.dequeueInputBuffer(5_000L)
                 retries++
-            }
-            if (inIndex < 0 && !isKeyFrame) {
-                drainOutput(codec)
-                inIndex = codec.dequeueInputBuffer(10_000L)
             }
 
             if (inIndex >= 0) {
@@ -235,18 +234,14 @@ object VideoDecoderEngine {
                 if (inputBuffer != null) {
                     inputBuffer.clear()
                     inputBuffer.put(frameToSend)
-                    if (nextFramePtsUs == 0L) {
-                        nextFramePtsUs = System.nanoTime() / 1000L
-                    }
-                    val presentationTimeUs = nextFramePtsUs
-                    nextFramePtsUs += 16_666L // ~60fps monotonic microsecond step
+                    val presentationTimeUs = System.nanoTime() / 1000L
                     codec.queueInputBuffer(inIndex, 0, frameToSend.size, presentationTimeUs, 0)
                     if (isKeyFrame) {
                         Log.i(TAG, "Successfully queued IDR keyframe (${frameToSend.size}B) into MediaCodec input buffer $inIndex")
                     }
                 }
-            } else if (isKeyFrame) {
-                Log.w(TAG, "Failed to obtain input buffer for IDR keyframe after retries!")
+            } else {
+                Log.w(TAG, "Dropping frame: decoder input buffer unavailable after 50ms (isKeyFrame=$isKeyFrame)")
             }
 
             drainOutput(codec)
