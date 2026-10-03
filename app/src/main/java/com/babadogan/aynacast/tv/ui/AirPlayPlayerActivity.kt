@@ -126,17 +126,24 @@ fun AirPlayPlayerScreen(
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
-        // Hardware accelerated video rendering surface sized to aspect ratio
         AndroidView(
-            modifier = Modifier.aspectRatio(aspect),
+            modifier = Modifier
+                .aspectRatio(aspect)
+                .fillMaxSize(),
             factory = { context ->
                 SurfaceView(context).apply {
+                    setZOrderMediaOverlay(true)
+                    holder.setFixedSize(1920, 1080)
                     holder.addCallback(object : SurfaceHolder.Callback {
                         override fun surfaceCreated(holder: SurfaceHolder) {
                             VideoDecoderEngine.bindOutputSurface(holder.surface)
                         }
 
-                        override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
+                        override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {
+                            if (w > 0 && ht > 0) {
+                                VideoDecoderEngine.bindOutputSurface(h.surface)
+                            }
+                        }
 
                         override fun surfaceDestroyed(holder: SurfaceHolder) {
                             VideoDecoderEngine.unbindSurface()

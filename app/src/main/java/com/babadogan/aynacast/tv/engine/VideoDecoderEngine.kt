@@ -22,7 +22,7 @@ object VideoDecoderEngine {
 
     private const val TAG = "VideoDecoderEngine"
     private const val MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_AVC
-    private const val QUEUE_CAPACITY = 500 // ample jitter buffer for 60fps streaming
+    private const val QUEUE_CAPACITY = 60 // Low-latency real-time queue (~1 sec at 60fps)
 
     private sealed class Task {
         class BindSurface(val surface: Surface) : Task()
@@ -71,6 +71,7 @@ object VideoDecoderEngine {
 
     fun unbindSurface() {
         Log.i(TAG, "Enqueuing UnbindSurface task")
+        useSoftwareDecoder = false
         queue.offer(Task.UnbindSurface)
     }
 
@@ -95,6 +96,7 @@ object VideoDecoderEngine {
     fun stopCodec() {
         queue.clear()
         cachedKeyframe = null
+        useSoftwareDecoder = false
         queue.offer(Task.UnbindSurface)
     }
 
@@ -166,9 +168,7 @@ object VideoDecoderEngine {
                 setInteger(MediaFormat.KEY_PRIORITY, 0)
                 // Low-latency vendor keys for MediaTek OMX and Qualcomm hardware decoders
                 setInteger("vdec-lowlatency", 1)
-                setInteger("low-latency", 1)
                 setInteger("vendor.rtc-ext-dec-low-latency.enable", 1)
-                setInteger("vendor.mtk-vdec-lowlatency.enable", 1)
             }
 
             codec.configure(format, surface, null, 0)
@@ -221,11 +221,11 @@ object VideoDecoderEngine {
         try {
             drainOutput(codec)
 
-            var inIndex = codec.dequeueInputBuffer(5_000L)
+            var inIndex = codec.dequeueInputBuffer(0L)
             var retries = 0
-            while (inIndex < 0 && retries < 10) {
+            while (inIndex < 0 && retries < 5) {
                 drainOutput(codec)
-                inIndex = codec.dequeueInputBuffer(5_000L)
+                inIndex = codec.dequeueInputBuffer(2_000L)
                 retries++
             }
 
@@ -241,7 +241,7 @@ object VideoDecoderEngine {
                     }
                 }
             } else {
-                Log.w(TAG, "Dropping frame: decoder input buffer unavailable after 50ms (isKeyFrame=$isKeyFrame)")
+                Log.w(TAG, "Dropping frame: decoder input buffer unavailable after retries (isKeyFrame=$isKeyFrame)")
             }
 
             drainOutput(codec)
