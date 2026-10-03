@@ -94,11 +94,6 @@ class AirPlayPlayerActivity : ComponentActivity() {
     override fun onDestroy() {
         VideoDecoderEngine.unbindSurface()
         super.onDestroy()
-        val settings = AppSettingsRepository.getInstance(this).settings.value
-        if (!settings.keepAliveInBackground && !AirPlaySessionManager.isStreaming.value) {
-            val serviceIntent = Intent(this, AirPlayDaemonService::class.java)
-            stopService(serviceIntent)
-        }
     }
 }
 
