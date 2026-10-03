@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -82,6 +83,8 @@ class AirPlayPlayerActivity : ComponentActivity() {
                     clientName = metadata.deviceName,
                     fps = currentFps,
                     resolution = "${metadata.resolutionWidth}x${metadata.resolutionHeight}",
+                    resolutionWidth = metadata.resolutionWidth,
+                    resolutionHeight = metadata.resolutionHeight,
                     badgeText = AirPlayStrings.airplayActiveBadge(appSettings.language)
                 )
             }
@@ -104,6 +107,8 @@ fun AirPlayPlayerScreen(
     clientName: String,
     fps: Int,
     resolution: String,
+    resolutionWidth: Int = 1920,
+    resolutionHeight: Int = 1080,
     badgeText: String
 ) {
     var showOverlay by remember { mutableStateOf(true) }
@@ -114,16 +119,26 @@ fun AirPlayPlayerScreen(
         showOverlay = false
     }
 
+    val aspect = if (resolutionWidth > 0 && resolutionHeight > 0) {
+        resolutionWidth.toFloat() / resolutionHeight.toFloat()
+    } else {
+        16f / 9f
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
     ) {
-        // Hardware accelerated video rendering surface
+        // Hardware accelerated video rendering surface sized to aspect ratio
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .aspectRatio(aspect)
+                .fillMaxSize(),
             factory = { context ->
                 SurfaceView(context).apply {
+                    setZOrderMediaOverlay(true)
                     holder.addCallback(object : SurfaceHolder.Callback {
                         override fun surfaceCreated(holder: SurfaceHolder) {
                             VideoDecoderEngine.bindOutputSurface(holder.surface)
