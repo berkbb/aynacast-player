@@ -96,11 +96,13 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         // Start C++ RTSP core server with dynamic device identity
         AirPlayNativeBridge.initNativeServer(RTSP_PORT, deviceName, macAddress, this)
 
-        // Pass actual TV resolution to native layer (used in GET /info AirPlay negotiation)
-        AirPlayNativeBridge.setDisplayResolution(displayInfo.width, displayInfo.height, displayInfo.refreshRate)
-
-        // Also update session metadata so UI shows correct values
-        AirPlaySessionManager.setDisplayResolution(displayInfo.width, displayInfo.height, displayInfo.refreshRate.toInt())
+        // Cap AirPlay mirroring display negotiation to 1080p (1920x1080 @ 60fps).
+        // Sending 4K forces the sender into 3616x2032 @ 75fps, exceeding the TV's AVC decoder hardware limits.
+        val airPlayWidth = minOf(displayInfo.width, 1920)
+        val airPlayHeight = minOf(displayInfo.height, 1080)
+        val airPlayFps = 60.0f
+        AirPlayNativeBridge.setDisplayResolution(airPlayWidth, airPlayHeight, airPlayFps)
+        AirPlaySessionManager.setDisplayResolution(airPlayWidth, airPlayHeight, airPlayFps.toInt())
 
         // Register mDNS / Bonjour services via Android NsdManager
         registerNsdServices()
@@ -143,7 +145,7 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
             serviceType = "_airplay._tcp"
             port = RTSP_PORT
             setAttribute("model", "AppleTV3,2")
-            setAttribute("features", "0x5A7FFFF7,0x1E")
+            setAttribute("features", "0x5A7FFEE6,0x0")
             setAttribute("srcvers", "220.68")
             setAttribute("deviceid", macAddress)
             setAttribute("flags", "0x4")

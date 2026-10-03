@@ -43,10 +43,17 @@ void RaopRtspServer::setDeviceIdentity(const std::string& deviceName, const std:
 }
 
 void RaopRtspServer::setDisplayResolution(int width, int height, float refreshRate) {
-    if (width > 0) displayWidth_ = width;
-    if (height > 0) displayHeight_ = height;
-    if (refreshRate > 0.0f) displayRefreshRate_ = refreshRate;
-    LOGI("Display resolution set: %dx%d @ %.2f fps", displayWidth_, displayHeight_, displayRefreshRate_);
+    // AirPlay screen mirroring protocol standard is 1080p (1920x1080 @ 60fps).
+    // Advertising higher resolutions (e.g. 4K) forces the sender to stream huge 3616x2032 @ 75fps,
+    // which exceeds TV hardware decoders (e.g. MediaTek MT5891 VDEC RM alloc fail).
+    int targetW = (width > 0 && width <= 1920) ? width : 1920;
+    int targetH = (height > 0 && height <= 1080) ? height : 1080;
+    float targetFps = (refreshRate > 0.0f && refreshRate <= 60.0f) ? refreshRate : 60.0f;
+
+    displayWidth_ = targetW;
+    displayHeight_ = targetH;
+    displayRefreshRate_ = targetFps;
+    LOGI("Display resolution negotiated: %dx%d @ %.2f fps", displayWidth_, displayHeight_, displayRefreshRate_);
 }
 
 bool RaopRtspServer::start(int rtspPort, int videoPort) {
@@ -196,16 +203,17 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
     struct timeval tv{5, 0}; // 5-second socket timeout
     setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    // AirPlay Mirror video stream packet format:
-    //   Bytes [0..3]:  payload_size  (big-endian uint32)
-    //   Byte  [4]:     packet_type   (0x01=SPS/PPS config, 0x00=video NAL frame)
-    //   Bytes [5..7]:  padding/flags (ignored)
-    //   Bytes [8..15]: timestamp     (big-endian uint64, NTP-based)
-    //   Bytes [16..]:  payload       (H.264 data, payloadLen bytes)
-    // Header = 16 bytes total.
-    static constexpr size_t VIDEO_HEADER_SIZE = 16;
+    // AirPlay Mirror video stream packet format (from UxPlay/RPiPlay reference):
+    //   Bytes  [0..3]:   payload_size  (little-endian uint32)
+    //   Byte   [4]:      packet_type   (0x00=video NAL, 0x01=codec config/SPS, 0x05=plist info...)
+    //   Byte   [5]:      sub-type flags
+    //   Bytes  [8..15]:  NTP timestamp (little-endian uint64)
+    //   Header is 128 bytes total (fixed).
+    //   Bytes [128..128+payload_size]: H.264 payload
+    static constexpr size_t VIDEO_HEADER_SIZE = 128;
 
     uint8_t header[VIDEO_HEADER_SIZE];
+
     while (isRunning_.load()) {
         size_t headerRead = 0;
         while (headerRead < VIDEO_HEADER_SIZE) {
@@ -221,19 +229,24 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
             headerRead += n;
         }
 
-        // AirPlay video TCP packet: header is big-endian (network byte order)
-        uint32_t payloadLen = (static_cast<uint32_t>(header[0]) << 24) |
-                              (static_cast<uint32_t>(header[1]) << 16) |
-                              (static_cast<uint32_t>(header[2]) << 8) |
-                               static_cast<uint32_t>(header[3]);
+        uint32_t payloadLen = static_cast<uint32_t>(header[0]) |
+                             (static_cast<uint32_t>(header[1]) << 8) |
+                             (static_cast<uint32_t>(header[2]) << 16) |
+                             (static_cast<uint32_t>(header[3]) << 24);
 
         uint8_t packetType = header[4] & 0xFF;
 
         uint64_t pts = 0;
         std::memcpy(&pts, header + 8, sizeof(pts));
 
-        if (payloadLen == 0 || payloadLen > 10 * 1024 * 1024) {
-            LOGW("Skipping video packet: invalid payloadLen=%u type=0x%02x", payloadLen, packetType);
+        LOGI("Video packet: type=0x%02x payloadLen=%u", packetType, payloadLen);
+
+        if (payloadLen == 0) {
+            continue;
+        }
+
+        if (payloadLen > 10 * 1024 * 1024) {
+            LOGW("Skipping oversized video packet: invalid payloadLen=%u type=0x%02x", payloadLen, packetType);
             continue;
         }
 
@@ -363,7 +376,7 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
            << "  <key>macAddress</key><string>" << macAddress_ << "</string>\n"
            << "  <key>name</key><string>" << deviceName_ << "</string>\n"
            << "  <key>model</key><string>AppleTV3,2</string>\n"
-           << "  <key>features</key><integer>130367356919</integer>\n"
+           << "  <key>features</key><integer>1518337766</integer>\n"
            << "  <key>statusFlags</key><integer>68</integer>\n"
            << "  <key>protovers</key><string>1.0</string>\n"
            << "  <key>srcvers</key><string>220.68</string>\n"
@@ -379,7 +392,7 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
            << "      <key>height</key><integer>" << displayHeight_ << "</integer>\n"
            << "      <key>heightPixels</key><integer>" << displayHeight_ << "</integer>\n"
            << "      <key>heightPhysical</key><integer>0</integer>\n"
-           << "      <key>overscanned</key><true/>\n"
+           << "      <key>overscanned</key><false/>\n"
            << "      <key>refreshRate</key><real>" << (1.0 / displayRefreshRate_) << "</real>\n"
            << "      <key>rotation</key><false/>\n"
            << "      <key>uuid</key><string>e0ff8a27-6738-3d56-8a16-cc53aacee925</string>\n"
@@ -420,12 +433,6 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
         resp.headers["Session"] = "1";
     } else if (req.method == "SETUP") {
         uint64_t streamConnectionId = 0;
-        size_t slash = req.uri.find_last_of('/');
-        if (slash != std::string::npos && slash + 1 < req.uri.size()) {
-            std::string idStr = req.uri.substr(slash + 1);
-            streamConnectionId = std::strtoull(idStr.c_str(), nullptr, 10);
-            LOGI("Extracted streamConnectionID from URI: %llu", (unsigned long long)streamConnectionId);
-        }
         crypto_.handleSetup(req.body, streamConnectionId);
 
         resp.headers["Content-Type"] = "application/x-apple-binary-plist";
