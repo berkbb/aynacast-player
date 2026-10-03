@@ -192,8 +192,22 @@ object VideoDecoderEngine {
     }
 
     private fun decodeFrame(nalData: ByteArray, isKeyFrame: Boolean) {
+        val frameToSend: ByteArray
         if (isKeyFrame) {
             cachedKeyframe = nalData.clone()
+            // Guarantee in-band SPS/PPS parameter set initialization before IDR keyframe
+            // (standard UxPlay / RPiPlay technique for hardware AVC decoders)
+            val sps = spsBytes
+            val pps = ppsBytes
+            frameToSend = if (sps != null && pps != null) {
+                val spsPrefix = ensureAnnexBPrefix(sps)
+                val ppsPrefix = ensureAnnexBPrefix(pps)
+                spsPrefix + ppsPrefix + nalData
+            } else {
+                nalData
+            }
+        } else {
+            frameToSend = nalData
         }
 
         val codec = mediaCodec ?: return
@@ -202,23 +216,37 @@ object VideoDecoderEngine {
         try {
             drainOutput(codec)
 
-            var inIndex = codec.dequeueInputBuffer(10_000L) // 10ms timeout on worker thread
-            if (inIndex < 0) {
+            // For IDR keyframes, allow multiple retry attempts with drainOutput to ensure
+            // the decoder accepts the foundational reference frame!
+            var inIndex = codec.dequeueInputBuffer(10_000L)
+            var retries = 0
+            while (inIndex < 0 && isKeyFrame && retries < 5) {
                 drainOutput(codec)
                 inIndex = codec.dequeueInputBuffer(20_000L)
+                retries++
             }
+            if (inIndex < 0 && !isKeyFrame) {
+                drainOutput(codec)
+                inIndex = codec.dequeueInputBuffer(10_000L)
+            }
+
             if (inIndex >= 0) {
                 val inputBuffer = codec.getInputBuffer(inIndex)
                 if (inputBuffer != null) {
                     inputBuffer.clear()
-                    inputBuffer.put(nalData)
+                    inputBuffer.put(frameToSend)
                     if (nextFramePtsUs == 0L) {
                         nextFramePtsUs = System.nanoTime() / 1000L
                     }
                     val presentationTimeUs = nextFramePtsUs
                     nextFramePtsUs += 16_666L // ~60fps monotonic microsecond step
-                    codec.queueInputBuffer(inIndex, 0, nalData.size, presentationTimeUs, 0)
+                    codec.queueInputBuffer(inIndex, 0, frameToSend.size, presentationTimeUs, 0)
+                    if (isKeyFrame) {
+                        Log.i(TAG, "Successfully queued IDR keyframe (${frameToSend.size}B) into MediaCodec input buffer $inIndex")
+                    }
                 }
+            } else if (isKeyFrame) {
+                Log.w(TAG, "Failed to obtain input buffer for IDR keyframe after retries!")
             }
 
             drainOutput(codec)
