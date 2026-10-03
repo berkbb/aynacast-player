@@ -22,7 +22,7 @@ object VideoDecoderEngine {
 
     private const val TAG = "VideoDecoderEngine"
     private const val MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_AVC
-    private const val QUEUE_CAPACITY = 60 // ~1 sec jitter/drop queue at 60fps
+    private const val QUEUE_CAPACITY = 200 // ample jitter buffer for 60fps streaming
 
     private sealed class Task {
         class BindSurface(val surface: Surface) : Task()
@@ -43,7 +43,6 @@ object VideoDecoderEngine {
 
     private var streamWidth = 1920
     private var streamHeight = 1080
-    private var awaitingKeyframe = false
     private var nextFramePtsUs = 0L
     @Volatile private var cachedKeyframe: ByteArray? = null
 
@@ -87,17 +86,15 @@ object VideoDecoderEngine {
             cachedKeyframe = nalData.clone()
         }
         if (!queue.offer(Task.Frame(nalData, isKeyFrame))) {
-            // Queue full: drop oldest frame to preserve live real-time mirroring
+            // Queue full: drop oldest frame to preserve real-time responsiveness
             queue.poll()
             queue.offer(Task.Frame(nalData, isKeyFrame))
-            awaitingKeyframe = true // packet dropped under load, resync at next keyframe
         }
     }
 
     fun stopCodec() {
         queue.clear()
         cachedKeyframe = null
-        awaitingKeyframe = false
         queue.offer(Task.UnbindSurface)
     }
 
@@ -182,10 +179,7 @@ object VideoDecoderEngine {
             val keyframe = cachedKeyframe
             if (keyframe != null) {
                 Log.i(TAG, "Replaying cached initial IDR keyframe (${keyframe.size}B) to newly started MediaCodec")
-                awaitingKeyframe = false
                 decodeFrame(keyframe, isKeyFrame = true)
-            } else {
-                awaitingKeyframe = false
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to configure and start MediaCodec", e)
@@ -205,18 +199,14 @@ object VideoDecoderEngine {
         val codec = mediaCodec ?: return
         if (boundSurface == null) return
 
-        if (awaitingKeyframe) {
-            if (!isKeyFrame) {
-                return // Drop predicted frames until a fresh IDR keyframe arrives
-            }
-            awaitingKeyframe = false
-            Log.i(TAG, "Resynced decoder on fresh IDR keyframe.")
-        }
-
         try {
             drainOutput(codec)
 
-            val inIndex = codec.dequeueInputBuffer(10_000L) // 10ms timeout on worker thread
+            var inIndex = codec.dequeueInputBuffer(10_000L) // 10ms timeout on worker thread
+            if (inIndex < 0) {
+                drainOutput(codec)
+                inIndex = codec.dequeueInputBuffer(20_000L)
+            }
             if (inIndex >= 0) {
                 val inputBuffer = codec.getInputBuffer(inIndex)
                 if (inputBuffer != null) {

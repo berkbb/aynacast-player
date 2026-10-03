@@ -433,6 +433,8 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
     } else if (req.method == "POST" && req.uri.find("/fp-setup") != std::string::npos) {
         crypto_.handleFpSetup(req.body, resp.body);
         resp.headers["Content-Type"] = "application/octet-stream";
+    } else if (req.method == "POST" && req.uri.find("/feedback") != std::string::npos) {
+        resp.headers["Session"] = "1";
     } else if (req.method == "ANNOUNCE") {
         resp.headers["Session"] = "1";
     } else if (req.method == "SETUP") {
