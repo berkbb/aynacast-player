@@ -144,8 +144,8 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
             serviceName = deviceName
             serviceType = "_airplay._tcp"
             port = RTSP_PORT
-            setAttribute("model", "AppleTV3,2")
-            setAttribute("features", "0x5A7FFEE6,0x0")
+            setAttribute("model", "AppleTV5,3")
+            setAttribute("features", "0x5A7FFFF7,0x1E")
             setAttribute("srcvers", "220.68")
             setAttribute("deviceid", macAddress)
             setAttribute("flags", "0x4")
@@ -189,8 +189,10 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
             setAttribute("sr", "44100")
             setAttribute("ss", "16")
             setAttribute("tp", "UDP")
-            setAttribute("vn", "3")
+            setAttribute("vn", "65537")
             setAttribute("vs", "220.68")
+            setAttribute("am", "AppleTV5,3")
+            setAttribute("sv", "false")
         }
 
         raopRegistrationListener = object : NsdManager.RegistrationListener {
