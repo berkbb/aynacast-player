@@ -4,6 +4,7 @@
 #include "airplay_protocol.h"
 #include "airplay_crypto.h"
 #include "h264_stream_parser.h"
+#include "alac.h"
 #include <atomic>
 #include <thread>
 #include <functional>
@@ -43,14 +44,20 @@ private:
     void videoTcpLoop();
     void handleVideoClientConnection(int clientFd);
 
+    void audioUdpLoop();
+
     RtspResponse processRtspRequest(const RtspRequest& req, const std::string& clientIp);
 
     std::atomic<bool> isRunning_{false};
     std::atomic<bool> isStreaming_{false};
     int rtspPort_{7000};
     int videoPort_{7100};
+    int audioDataPort_{7011};
+    int audioControlPort_{7012};
     int serverFd_{-1};
     int videoServerFd_{-1};
+    int audioDataFd_{-1};
+    int audioControlFd_{-1};
 
     std::string deviceName_{"PhilipsTV"};
     std::string macAddress_{"00:11:22:33:44:55"};
@@ -60,9 +67,11 @@ private:
 
     std::thread serverThread_;
     std::thread videoTcpThread_;
+    std::thread audioThread_;
 
     AirPlayCrypto crypto_;
     H264StreamParser videoParser_;
+    alac_file* alacDecoder_{nullptr};
 
     ClientConnectedCallback onClientConnected_;
     StreamStartedCallback onStreamStarted_;

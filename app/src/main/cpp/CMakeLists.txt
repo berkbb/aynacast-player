@@ -9,6 +9,7 @@ add_library(airplaycore SHARED
     h264_stream_parser.cpp
     tweetnacl.c
     aes.c
+    alac.c
     playfair/hand_garble.c
     playfair/modified_md5.c
     playfair/omg_hax.c

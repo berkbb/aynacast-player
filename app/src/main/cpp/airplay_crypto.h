@@ -33,6 +33,11 @@ public:
     // Video stream decryption
     bool hasVideoKey() const;
     bool decryptVideoPayload(uint8_t* payload, size_t length);
+
+    // Audio stream decryption (AES-128-CBC)
+    bool hasAudioKey() const;
+    bool decryptAudioPayload(uint8_t* payload, size_t length);
+
     void resetSessionCrypto();
 
 private:
@@ -51,6 +56,7 @@ private:
     std::vector<uint8_t> aesIv_;
 
     std::vector<uint8_t> sessionAesKey_;
+    std::vector<uint8_t> sessionAesIv_;
     bool hasSessionAesKey_{false};
     uint64_t streamConnectionId_{0};
 

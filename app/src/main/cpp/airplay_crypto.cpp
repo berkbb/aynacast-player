@@ -505,6 +505,10 @@ bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& o
 
         sessionAesKey_.assign(finalAesKey, finalAesKey + 16);
         hasSessionAesKey_ = true;
+        if (!eiv.empty() && eiv.size() >= 16) {
+            sessionAesIv_.assign(eiv.begin(), eiv.begin() + 16);
+            LOGI("Saved session AES IV: %s", hexEncode(sessionAesIv_.data(), 16).c_str());
+        }
         LOGI("Saved session AES key: %s", hexEncode(sessionAesKey_.data(), 16).c_str());
     }
 
@@ -623,6 +627,7 @@ void AirPlayCrypto::resetSessionCrypto() {
     std::lock_guard<std::mutex> lock(cryptoMutex_);
     fpKeyMsg_.clear();
     sessionAesKey_.clear();
+    sessionAesIv_.clear();
     hasSessionAesKey_ = false;
     streamConnectionId_ = 0;
     videoAesKey_.clear();
@@ -635,6 +640,33 @@ void AirPlayCrypto::resetSessionCrypto() {
     nextDecryptCount_ = 0;
     std::memset(og_, 0, sizeof(og_));
     LOGI("Session crypto reset.");
+}
+
+bool AirPlayCrypto::hasAudioKey() const {
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
+    return hasSessionAesKey_ && !sessionAesIv_.empty();
+}
+
+bool AirPlayCrypto::decryptAudioPayload(uint8_t* payload, size_t length) {
+    if (!payload || length == 0) return false;
+
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
+    if (!hasSessionAesKey_) {
+        return false;
+    }
+
+    const uint8_t* ivPtr = sessionAesIv_.size() >= 16 ? sessionAesIv_.data() : nullptr;
+    if (!ivPtr) {
+        return false;
+    }
+
+    size_t encryptedLen = (length / 16) * 16;
+    if (encryptedLen > 0) {
+        struct AES_ctx ctx;
+        AES_init_ctx_iv(&ctx, sessionAesKey_.data(), ivPtr);
+        AES_CBC_decrypt_buffer(&ctx, payload, encryptedLen);
+    }
+    return true;
 }
 
 } // namespace airplay
