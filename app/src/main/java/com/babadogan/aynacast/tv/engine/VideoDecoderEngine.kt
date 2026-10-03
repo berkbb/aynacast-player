@@ -7,104 +7,149 @@ import android.util.Log
 import android.view.Surface
 import com.babadogan.aynacast.tv.session.AirPlaySessionManager
 import java.nio.ByteBuffer
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.TimeUnit
 
+/**
+ * Dedicated hardware/software video decoding pipeline for AirPlay mirroring.
+ *
+ * Runs decoding operations on an isolated worker thread so:
+ * 1. UI thread is NEVER blocked (SurfaceView draws smoothly).
+ * 2. Network thread is NEVER blocked (AirPlay socket is drained in real-time).
+ * 3. MediaCodec is touched exclusively by a single thread, eliminating concurrency deadlocks.
+ */
 object VideoDecoderEngine {
 
     private const val TAG = "VideoDecoderEngine"
     private const val MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_AVC
+    private const val QUEUE_CAPACITY = 60 // ~1 sec jitter/drop queue at 60fps
+
+    private sealed class Task {
+        class BindSurface(val surface: Surface) : Task()
+        object UnbindSurface : Task()
+        class Config(val sps: ByteArray, val pps: ByteArray) : Task()
+        class Frame(val data: ByteArray, val isKeyFrame: Boolean) : Task()
+    }
+
+    private val queue = ArrayBlockingQueue<Task>(QUEUE_CAPACITY)
+    private var workerThread: Thread? = null
+    @Volatile private var isRunning = false
 
     private var mediaCodec: MediaCodec? = null
     private var boundSurface: Surface? = null
-    private val isCodecRunning = AtomicBoolean(false)
-    private var useSoftwareDecoder = false
-
     private var spsBytes: ByteArray? = null
     private var ppsBytes: ByteArray? = null
+    private var useSoftwareDecoder = false
+
     private var streamWidth = 1920
     private var streamHeight = 1080
+    private var awaitingKeyframe = true
+    private var nextFramePtsUs = 0L
 
     private var frameCount = 0
     private var lastFpsCalculationTime = 0L
 
+    init {
+        startWorker()
+    }
+
     @Synchronized
+    private fun startWorker() {
+        if (isRunning && workerThread?.isAlive == true) return
+        isRunning = true
+        workerThread = Thread({ runDecoderLoop() }, "AirPlay-VideoDecoder").apply {
+            priority = Thread.MAX_PRIORITY
+            start()
+        }
+    }
+
     fun bindOutputSurface(surface: Surface) {
-        Log.i(TAG, "Binding new output Surface to decoder.")
-        boundSurface = surface
-        nextFramePtsUs = 0L
-        awaitingKeyframe = true
-        if (spsBytes != null && ppsBytes != null && !isCodecRunning.get()) {
-            configureAndStartCodec(spsBytes!!, ppsBytes!!)
-        }
+        startWorker()
+        Log.i(TAG, "Enqueuing BindSurface task")
+        queue.offer(Task.BindSurface(surface))
     }
 
-    @Synchronized
     fun unbindSurface() {
-        Log.i(TAG, "Unbinding output Surface.")
-        stopCodec()
-        boundSurface = null
+        Log.i(TAG, "Enqueuing UnbindSurface task")
+        queue.offer(Task.UnbindSurface)
     }
 
-    @Synchronized
     fun onSpsPpsReady(sps: ByteArray, pps: ByteArray) {
-        Log.i(TAG, "SPS (${sps.size} bytes) & PPS (${pps.size} bytes) received.")
-        spsBytes = sps
-        ppsBytes = pps
+        startWorker()
+        Log.i(TAG, "Enqueuing Config task: SPS=${sps.size}B PPS=${pps.size}B")
+        queue.offer(Task.Config(sps, pps))
+    }
 
-        // Parse stream resolution directly from the SPS NAL unit
-        val parsedRes = parseSpsResolution(sps)
-        if (parsedRes != null && parsedRes.first in 64..4096 && parsedRes.second in 64..4096) {
-            streamWidth = parsedRes.first
-            streamHeight = parsedRes.second
-            Log.i(TAG, "Parsed stream resolution from SPS: ${streamWidth}x${streamHeight}")
-        } else {
-            Log.w(TAG, "Could not parse SPS resolution, using default ${streamWidth}x${streamHeight}")
-        }
-
-        if (boundSurface != null) {
-            configureAndStartCodec(sps, pps)
+    fun feedNalUnit(nalData: ByteArray, ptsUs: Long, isKeyFrame: Boolean) {
+        startWorker()
+        if (!queue.offer(Task.Frame(nalData, isKeyFrame))) {
+            // Queue full: drop oldest frame to preserve live real-time mirroring
+            queue.poll()
+            queue.offer(Task.Frame(nalData, isKeyFrame))
+            awaitingKeyframe = true // packet dropped under load, resync at next keyframe
         }
     }
 
-    private fun ensureAnnexBPrefix(data: ByteArray): ByteArray {
-        if (data.size >= 4 && data[0] == 0.toByte() && data[1] == 0.toByte() && data[2] == 0.toByte() && data[3] == 1.toByte()) {
-            return data
-        }
-        if (data.size >= 3 && data[0] == 0.toByte() && data[1] == 0.toByte() && data[2] == 1.toByte()) {
-            return byteArrayOf(0) + data
-        }
-        return byteArrayOf(0, 0, 0, 1) + data
+    fun stopCodec() {
+        queue.clear()
+        queue.offer(Task.UnbindSurface)
     }
 
-    private fun createCodec(): MediaCodec {
-        return if (useSoftwareDecoder) {
-            Log.i(TAG, "Creating Google software AVC decoder: OMX.google.h264.decoder")
-            MediaCodec.createByCodecName("OMX.google.h264.decoder")
-        } else {
+    // ─── Worker Loop (Runs exclusively on AirPlay-VideoDecoder thread) ───
+
+    private fun runDecoderLoop() {
+        Log.i(TAG, "AirPlay-VideoDecoder worker thread started")
+        while (isRunning) {
             try {
-                Log.i(TAG, "Creating hardware AVC decoder by type: $MIME_TYPE")
-                MediaCodec.createDecoderByType(MIME_TYPE)
+                val task = queue.poll(100, TimeUnit.MILLISECONDS) ?: continue
+                when (task) {
+                    is Task.BindSurface -> {
+                        boundSurface = task.surface
+                        nextFramePtsUs = 0L
+                        awaitingKeyframe = true
+                        if (spsBytes != null && ppsBytes != null) {
+                            rebuildCodec()
+                        }
+                    }
+                    is Task.UnbindSurface -> {
+                        boundSurface = null
+                        releaseCodec()
+                    }
+                    is Task.Config -> {
+                        spsBytes = task.sps
+                        ppsBytes = task.pps
+
+                        val parsedRes = parseSpsResolution(task.sps)
+                        if (parsedRes != null && parsedRes.first in 64..4096 && parsedRes.second in 64..4096) {
+                            streamWidth = parsedRes.first
+                            streamHeight = parsedRes.second
+                            Log.i(TAG, "Parsed stream resolution from SPS: ${streamWidth}x${streamHeight}")
+                        }
+
+                        if (boundSurface != null) {
+                            rebuildCodec()
+                        }
+                    }
+                    is Task.Frame -> {
+                        decodeFrame(task.data, task.isKeyFrame)
+                    }
+                }
+            } catch (e: InterruptedException) {
+                break
             } catch (e: Exception) {
-                Log.w(TAG, "Hardware decoder creation failed, falling back to OMX.google.h264.decoder", e)
-                useSoftwareDecoder = true
-                MediaCodec.createByCodecName("OMX.google.h264.decoder")
+                Log.e(TAG, "Exception in video decoder loop", e)
             }
         }
+        releaseCodec()
+        Log.i(TAG, "AirPlay-VideoDecoder worker thread stopped")
     }
 
-    private fun configureAndStartCodec(sps: ByteArray, pps: ByteArray) {
-        if (isCodecRunning.get()) {
-            try {
-                isCodecRunning.set(false)
-                mediaCodec?.stop()
-                mediaCodec?.release()
-                mediaCodec = null
-            } catch (e: Exception) {
-                Log.e(TAG, "Error stopping previous codec instance", e)
-            }
-        }
-
+    private fun rebuildCodec() {
+        releaseCodec()
         val surface = boundSurface ?: return
+        val sps = spsBytes ?: return
+        val pps = ppsBytes ?: return
+
         try {
             val spsPrefix = ensureAnnexBPrefix(sps)
             val ppsPrefix = ensureAnnexBPrefix(pps)
@@ -123,66 +168,38 @@ object VideoDecoderEngine {
             codec.start()
 
             mediaCodec = codec
-            isCodecRunning.set(true)
             frameCount = 0
             lastFpsCalculationTime = System.currentTimeMillis()
+            nextFramePtsUs = 0L
+            awaitingKeyframe = true
             AirPlaySessionManager.setDisplayResolution(streamWidth, streamHeight, 60)
-            Log.i(TAG, "MediaCodec started: ${codec.name} at ${streamWidth}x${streamHeight} (software=$useSoftwareDecoder). Pending frames: ${pendingFrames.size}")
-
-            while (!pendingFrames.isEmpty()) {
-                val frame = pendingFrames.removeFirst()
-                queueFrameToCodec(codec, frame.data, frame.ptsUs, frame.isKeyFrame)
-            }
+            Log.i(TAG, "MediaCodec started on worker thread: ${codec.name} (${streamWidth}x${streamHeight}, software=$useSoftwareDecoder)")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start MediaCodec decoder", e)
+            Log.e(TAG, "Failed to configure and start MediaCodec", e)
             if (!useSoftwareDecoder) {
-                Log.w(TAG, "Retrying with software decoder fallback...")
+                Log.w(TAG, "Attempting software decoder fallback...")
                 useSoftwareDecoder = true
-                configureAndStartCodec(sps, pps)
+                rebuildCodec()
             }
         }
     }
 
-    private data class PendingFrame(val data: ByteArray, val ptsUs: Long, val isKeyFrame: Boolean)
-    private val pendingFrames = java.util.ArrayDeque<PendingFrame>()
-    @Volatile private var awaitingKeyframe = true
-    private var nextFramePtsUs = 0L
+    private fun decodeFrame(nalData: ByteArray, isKeyFrame: Boolean) {
+        val codec = mediaCodec ?: return
+        if (boundSurface == null) return
 
-    @Synchronized
-    fun feedNalUnit(nalData: ByteArray, ptsUs: Long, isKeyFrame: Boolean) {
-        val codec = mediaCodec
-        if (codec == null || !isCodecRunning.get()) {
-            if (pendingFrames.size > 90) {
-                pendingFrames.removeFirst()
-                awaitingKeyframe = true
-            }
-            pendingFrames.addLast(PendingFrame(nalData, ptsUs, isKeyFrame))
-            return
-        }
-
-        while (!pendingFrames.isEmpty()) {
-            val frame = pendingFrames.removeFirst()
-            queueFrameToCodec(codec, frame.data, frame.ptsUs, frame.isKeyFrame)
-        }
-
-        // Drop predicted frames until a fresh IDR keyframe arrives to avoid decoding artifacts/smearing
         if (awaitingKeyframe) {
             if (!isKeyFrame) {
-                return
+                return // Drop predicted frames until a fresh IDR keyframe arrives
             }
             awaitingKeyframe = false
             Log.i(TAG, "Resynced decoder on fresh IDR keyframe.")
         }
 
-        queueFrameToCodec(codec, nalData, ptsUs, isKeyFrame)
-    }
-
-    private fun queueFrameToCodec(codec: MediaCodec, nalData: ByteArray, ptsUs: Long, isKeyFrame: Boolean) {
         try {
-            // Drain output FIRST to ensure the codec has free input buffer slots
             drainOutput(codec)
 
-            val inIndex = codec.dequeueInputBuffer(100_000L) // 100ms timeout
+            val inIndex = codec.dequeueInputBuffer(10_000L) // 10ms timeout on worker thread
             if (inIndex >= 0) {
                 val inputBuffer = codec.getInputBuffer(inIndex)
                 if (inputBuffer != null) {
@@ -192,12 +209,9 @@ object VideoDecoderEngine {
                         nextFramePtsUs = System.nanoTime() / 1000L
                     }
                     val presentationTimeUs = nextFramePtsUs
-                    nextFramePtsUs += 16_666L // monotonic ~60fps PTS interval
-                    // Flags must be 0 for decoders (BUFFER_FLAG_KEY_FRAME is for encoders)
+                    nextFramePtsUs += 16_666L // ~60fps monotonic microsecond step
                     codec.queueInputBuffer(inIndex, 0, nalData.size, presentationTimeUs, 0)
                 }
-            } else {
-                Log.v(TAG, "No input buffer available after timeout, dropping NAL unit to preserve latency")
             }
 
             drainOutput(codec)
@@ -205,21 +219,18 @@ object VideoDecoderEngine {
             Log.e(TAG, "MediaCodec fatal error during decoding — initiating fallback", e)
             handleCodecFatalError()
         } catch (e: Exception) {
-            Log.e(TAG, "Error processing NAL frame in MediaCodec", e)
+            Log.e(TAG, "Error decoding frame", e)
         }
     }
 
     private fun handleCodecFatalError() {
         if (!useSoftwareDecoder) {
-            Log.w(TAG, "Switching to software decoder fallback after hardware decoder crash")
+            Log.w(TAG, "Switching to software decoder fallback after hardware decoder error")
             useSoftwareDecoder = true
-            stopCodec()
-            if (boundSurface != null && spsBytes != null && ppsBytes != null) {
-                configureAndStartCodec(spsBytes!!, ppsBytes!!)
-            }
+            rebuildCodec()
         } else {
-            Log.e(TAG, "Software decoder also encountered fatal error")
-            stopCodec()
+            Log.e(TAG, "Software decoder also encountered error — resetting decoder state")
+            releaseCodec()
         }
     }
 
@@ -240,12 +251,12 @@ object VideoDecoderEngine {
                         streamWidth = w
                         streamHeight = h
                         AirPlaySessionManager.setDisplayResolution(w, h, 60)
-                        Log.i(TAG, "Decoder output format changed: authoritative resolution = ${w}x${h}")
+                        Log.i(TAG, "Authoritative decoder resolution: ${w}x${h}")
                     }
                 }
                 outIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED -> {}
                 outIndex >= 0 -> {
-                    // Render frame to Surface immediately
+                    // Render frame directly to Surface
                     codec.releaseOutputBuffer(outIndex, true)
                     frameCount++
                     val now = System.currentTimeMillis()
@@ -262,26 +273,47 @@ object VideoDecoderEngine {
         }
     }
 
-    @Synchronized
-    fun stopCodec() {
-        pendingFrames.clear()
-        if (!isCodecRunning.get()) return
+    private fun releaseCodec() {
         try {
-            isCodecRunning.set(false)
             mediaCodec?.stop()
             mediaCodec?.release()
-            mediaCodec = null
-            Log.i(TAG, "MediaCodec stopped and released.")
         } catch (e: Exception) {
-            Log.e(TAG, "Error stopping MediaCodec", e)
+            Log.e(TAG, "Error releasing MediaCodec", e)
+        } finally {
+            mediaCodec = null
         }
+    }
+
+    private fun createCodec(): MediaCodec {
+        return if (useSoftwareDecoder) {
+            Log.i(TAG, "Creating Google software AVC decoder: OMX.google.h264.decoder")
+            MediaCodec.createByCodecName("OMX.google.h264.decoder")
+        } else {
+            try {
+                Log.i(TAG, "Creating hardware AVC decoder by type: $MIME_TYPE")
+                MediaCodec.createDecoderByType(MIME_TYPE)
+            } catch (e: Exception) {
+                Log.w(TAG, "Hardware decoder creation failed, falling back to OMX.google.h264.decoder", e)
+                useSoftwareDecoder = true
+                MediaCodec.createByCodecName("OMX.google.h264.decoder")
+            }
+        }
+    }
+
+    private fun ensureAnnexBPrefix(data: ByteArray): ByteArray {
+        if (data.size >= 4 && data[0] == 0.toByte() && data[1] == 0.toByte() && data[2] == 0.toByte() && data[3] == 1.toByte()) {
+            return data
+        }
+        if (data.size >= 3 && data[0] == 0.toByte() && data[1] == 0.toByte() && data[2] == 1.toByte()) {
+            return byteArrayOf(0) + data
+        }
+        return byteArrayOf(0, 0, 0, 1) + data
     }
 
     // ─── SPS Parser (Sequence Parameter Set resolution extraction) ───
 
     private fun parseSpsResolution(sps: ByteArray): Pair<Int, Int>? {
         try {
-            // Find start of NAL (skip Annex-B 00 00 00 01 if present)
             var offset = 0
             while (offset + 3 < sps.size) {
                 if (sps[offset].toInt() == 0 && sps[offset + 1].toInt() == 0 &&
@@ -294,11 +326,11 @@ object VideoDecoderEngine {
             if (offset >= sps.size) offset = 0
             if (sps.size - offset < 4) return null
 
-            val reader = SpsBitReader(sps, offset + 1) // skip NAL type byte (0x67 or 0x27)
+            val reader = SpsBitReader(sps, offset + 1)
             val profileIdc = reader.readBits(8)
-            reader.readBits(8) // constraint flags
-            reader.readBits(8) // level_idc
-            reader.readUe()    // seq_parameter_set_id
+            reader.readBits(8)
+            reader.readBits(8)
+            reader.readUe()
 
             var chromaFormatIdc = 1
             var separateColorPlaneFlag = 0
@@ -309,10 +341,10 @@ object VideoDecoderEngine {
                 if (chromaFormatIdc == 3) {
                     separateColorPlaneFlag = reader.readBits(1)
                 }
-                reader.readUe() // bit_depth_luma_minus8
-                reader.readUe() // bit_depth_chroma_minus8
-                reader.readBits(1) // qpprime_y_zero_transform_bypass_flag
-                if (reader.readBits(1) == 1) { // seq_scaling_matrix_present_flag
+                reader.readUe()
+                reader.readUe()
+                reader.readBits(1)
+                if (reader.readBits(1) == 1) {
                     val count = if (chromaFormatIdc != 3) 8 else 12
                     repeat(count) {
                         if (reader.readBits(1) == 1) {
@@ -322,7 +354,7 @@ object VideoDecoderEngine {
                 }
             }
 
-            reader.readUe() // log2_max_frame_num_minus4
+            reader.readUe()
             val picOrderCntType = reader.readUe()
             when (picOrderCntType) {
                 0 -> reader.readUe()
@@ -334,8 +366,8 @@ object VideoDecoderEngine {
                 }
             }
 
-            reader.readUe() // max_num_ref_frames
-            reader.readBits(1) // gaps_in_frame_num_value_allowed_flag
+            reader.readUe()
+            reader.readBits(1)
 
             val picWidthInMbsMinus1 = reader.readUe()
             val picHeightInMapUnitsMinus1 = reader.readUe()
@@ -343,13 +375,13 @@ object VideoDecoderEngine {
             if (frameMbsOnlyFlag == 0) {
                 reader.readBits(1)
             }
-            reader.readBits(1) // direct_8x8_inference_flag
+            reader.readBits(1)
 
             var cropLeft = 0
             var cropRight = 0
             var cropTop = 0
             var cropBottom = 0
-            if (reader.readBits(1) == 1) { // frame_cropping_flag
+            if (reader.readBits(1) == 1) {
                 cropLeft = reader.readUe()
                 cropRight = reader.readUe()
                 cropTop = reader.readUe()
