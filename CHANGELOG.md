@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0] - 2026-10-03
+## [1.2.0] - 2026-10-03 - Milestone: Mac Screen Mirroring (Video Only / Without Sound)
+
+### Added
+- **Milestone: Mac Screen Mirroring (Without Sound / Video Only):**
+  - Reliable, artifact-free, freeze-free full-screen AirPlay video mirroring from macOS to Philips Android TV (`TPM171E`, MT5891 AVC decoder).
+  - High framerate up to 60 FPS with hardware-accelerated MediaCodec pipeline rendering directly onto `SurfaceView`.
+  - In-band Annex-B SPS/PPS parameter set prepending before IDR keyframes for seamless decoder stream synchronization.
+  - Multi-threaded video architecture: isolated worker thread (`AirPlay-VideoDecoder`) guarantees decoupling between RTSP network socket and UI rendering.
+  - Robust handling of macOS extended display vs mirror mode with aspect-fit letterboxing/pillarboxing.
 
 ### Fixed
 - **AirPlay Mirroring Black Screen & Hardware Decoder Resolution Crash:**
@@ -15,10 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Capped negotiated AirPlay mirroring display resolution strictly to standard 1080p (`1920x1080 @ 60fps`) with `overscanned=false` in RTSP `GET /info` plist.
 - **MediaCodec H.264 Pipeline & Bitstream Resiliency:**
   - Integrated SPS bitstream Exp-Golomb parser to dynamically determine authoritative video dimensions from incoming SPS NAL units.
-  - Removed duplicate SPS/PPS prepending into keyframe payload which corrupted hardware decoder parsers.
   - Added seamless automatic software decoder fallback (`OMX.google.h264.decoder`) if the hardware decoder ever reports an error.
   - Enforced monotonic relative presentation timestamps (`nextFramePtsUs`) preventing SurfaceFlinger implausible timestamp warnings and buffer queue stalls.
-  - Implemented IDR keyframe resync gate (`awaitingKeyframe`) on startup and reconnect to prevent predicted frame smearing and macroblocking artifacts.
+  - Implemented IDR keyframe input buffer retry queueing to guarantee initial frame decoding without black screen.
 - **Aspect-Fit Letterboxing & Pillarboxing:**
   - Implemented automatic aspect-fit centering in `AirPlayPlayerActivity` using Jetpack Compose `aspectRatio()` and solid black backing (`Color.Black`), cleanly letterboxing 16:10 MacBooks and pillarboxing portrait iPhones without stretching.
 
