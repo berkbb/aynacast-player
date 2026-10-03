@@ -128,9 +128,7 @@ fun AirPlayPlayerScreen(
     ) {
         // Hardware accelerated video rendering surface sized to aspect ratio
         AndroidView(
-            modifier = Modifier
-                .aspectRatio(aspect)
-                .fillMaxSize(),
+            modifier = Modifier.aspectRatio(aspect),
             factory = { context ->
                 SurfaceView(context).apply {
                     setZOrderMediaOverlay(true)

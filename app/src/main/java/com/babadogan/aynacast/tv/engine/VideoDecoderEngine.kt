@@ -43,8 +43,9 @@ object VideoDecoderEngine {
 
     private var streamWidth = 1920
     private var streamHeight = 1080
-    private var awaitingKeyframe = true
+    private var awaitingKeyframe = false
     private var nextFramePtsUs = 0L
+    @Volatile private var cachedKeyframe: ByteArray? = null
 
     private var frameCount = 0
     private var lastFpsCalculationTime = 0L
@@ -82,6 +83,9 @@ object VideoDecoderEngine {
 
     fun feedNalUnit(nalData: ByteArray, ptsUs: Long, isKeyFrame: Boolean) {
         startWorker()
+        if (isKeyFrame) {
+            cachedKeyframe = nalData.clone()
+        }
         if (!queue.offer(Task.Frame(nalData, isKeyFrame))) {
             // Queue full: drop oldest frame to preserve live real-time mirroring
             queue.poll()
@@ -92,6 +96,8 @@ object VideoDecoderEngine {
 
     fun stopCodec() {
         queue.clear()
+        cachedKeyframe = null
+        awaitingKeyframe = false
         queue.offer(Task.UnbindSurface)
     }
 
@@ -106,7 +112,6 @@ object VideoDecoderEngine {
                     is Task.BindSurface -> {
                         boundSurface = task.surface
                         nextFramePtsUs = 0L
-                        awaitingKeyframe = true
                         if (spsBytes != null && ppsBytes != null) {
                             rebuildCodec()
                         }
@@ -171,9 +176,17 @@ object VideoDecoderEngine {
             frameCount = 0
             lastFpsCalculationTime = System.currentTimeMillis()
             nextFramePtsUs = 0L
-            awaitingKeyframe = true
             AirPlaySessionManager.setDisplayResolution(streamWidth, streamHeight, 60)
             Log.i(TAG, "MediaCodec started on worker thread: ${codec.name} (${streamWidth}x${streamHeight}, software=$useSoftwareDecoder)")
+
+            val keyframe = cachedKeyframe
+            if (keyframe != null) {
+                Log.i(TAG, "Replaying cached initial IDR keyframe (${keyframe.size}B) to newly started MediaCodec")
+                awaitingKeyframe = false
+                decodeFrame(keyframe, isKeyFrame = true)
+            } else {
+                awaitingKeyframe = false
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to configure and start MediaCodec", e)
             if (!useSoftwareDecoder) {
@@ -185,6 +198,10 @@ object VideoDecoderEngine {
     }
 
     private fun decodeFrame(nalData: ByteArray, isKeyFrame: Boolean) {
+        if (isKeyFrame) {
+            cachedKeyframe = nalData.clone()
+        }
+
         val codec = mediaCodec ?: return
         if (boundSurface == null) return
 
@@ -315,15 +332,17 @@ object VideoDecoderEngine {
     private fun parseSpsResolution(sps: ByteArray): Pair<Int, Int>? {
         try {
             var offset = 0
+            var foundStartCode = false
             while (offset + 3 < sps.size) {
                 if (sps[offset].toInt() == 0 && sps[offset + 1].toInt() == 0 &&
                     (sps[offset + 2].toInt() == 1 || (sps[offset + 2].toInt() == 0 && sps[offset + 3].toInt() == 1))) {
                     offset = if (sps[offset + 2].toInt() == 1) offset + 3 else offset + 4
+                    foundStartCode = true
                     break
                 }
                 offset++
             }
-            if (offset >= sps.size) offset = 0
+            if (!foundStartCode) offset = 0
             if (sps.size - offset < 4) return null
 
             val reader = SpsBitReader(sps, offset + 1)

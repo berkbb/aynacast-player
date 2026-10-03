@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <mutex>
 
 namespace airplay {
 
@@ -30,11 +31,13 @@ public:
     bool handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& outStreamConnectionId);
 
     // Video stream decryption
-    bool hasVideoKey() const { return hasVideoKey_; }
+    bool hasVideoKey() const;
     bool decryptVideoPayload(uint8_t* payload, size_t length);
     void resetSessionCrypto();
 
 private:
+    mutable std::mutex cryptoMutex_;
+
     std::vector<uint8_t> serverEd25519Pk_;
     std::vector<uint8_t> serverEd25519Sk_;
 

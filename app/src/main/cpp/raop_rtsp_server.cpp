@@ -273,6 +273,9 @@ void RaopRtspServer::handleVideoClientConnection(int clientFd) {
                 crypto_.decryptVideoPayload(payload.data(), payload.size());
             }
             videoParser_.parsePayload(payload.data(), payload.size(), pts);
+        } else if (packetType == 0x05) {
+            // Periodic AirPlay mirror streaming performance report (unencrypted plist, sent ~1/s)
+            // Do not decrypt or forward to H.264 parser.
         } else {
             LOGI("Unknown video packet type=0x%02x payloadLen=%u", packetType, payloadLen);
         }
@@ -394,6 +397,7 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
            << "      <key>heightPhysical</key><integer>0</integer>\n"
            << "      <key>overscanned</key><false/>\n"
            << "      <key>refreshRate</key><real>" << (1.0 / displayRefreshRate_) << "</real>\n"
+           << "      <key>maxFPS</key><integer>60</integer>\n"
            << "      <key>rotation</key><false/>\n"
            << "      <key>uuid</key><string>e0ff8a27-6738-3d56-8a16-cc53aacee925</string>\n"
            << "      <key>width</key><integer>" << displayWidth_ << "</integer>\n"
@@ -484,9 +488,22 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
     } else if (req.method == "PAUSE" || req.method == "FLUSH") {
         resp.headers["Session"] = "1";
     } else if (req.method == "TEARDOWN") {
-        isStreaming_.store(false);
-        crypto_.resetSessionCrypto();
-        if (onStreamStopped_) onStreamStopped_();
+        bool teardownAudioOnly = false;
+        if (!req.body.empty() && req.body.size() > 16) {
+            std::string bodyStr(reinterpret_cast<const char*>(req.body.data()), req.body.size());
+            if (bodyStr.find("type") != std::string::npos &&
+                bodyStr.find("\x60") != std::string::npos && // 96
+                bodyStr.find("\x6e") == std::string::npos) { // 110
+                teardownAudioOnly = true;
+            }
+        }
+        if (!teardownAudioOnly) {
+            isStreaming_.store(false);
+            crypto_.resetSessionCrypto();
+            if (onStreamStopped_) onStreamStopped_();
+        } else {
+            LOGI("TEARDOWN request is audio-only; preserving active video mirroring stream.");
+        }
         resp.headers["Session"] = "1";
     }
 
