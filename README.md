@@ -4,7 +4,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple.svg)](https://kotlinlang.org)
 [![Compose TV](https://img.shields.io/badge/Jetpack%20Compose%20for%20TV-1.0.0-green.svg)](https://developer.android.com/jetpack/compose/tv)
 [![NDK](https://img.shields.io/badge/NDK-r30-orange.svg)](https://developer.android.com/ndk)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A high-performance, ultra-low-latency, hardware-accelerated **AirPlay Receiver & Screen Mirroring Engine** engineered specifically for **Android TV** and **Google TV**, combining native Turkish ("Ayna" - Mirror) and English ("Cast" - Stream) branding: **AynaCast TV** (`com.babadogan.aynacast.tv`).
 
@@ -139,4 +139,4 @@ Run all tests via:
 
 ## 📄 License
 
-Licensed under the **Apache License, Version 2.0**. See the [LICENSE](LICENSE) file for complete terms and copyright notices.
+Licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details and [TRADEMARKS.md](TRADEMARKS.md) for trademark notices.

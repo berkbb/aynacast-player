@@ -139,11 +139,7 @@ fun AirPlayPlayerScreen(
                             VideoDecoderEngine.bindOutputSurface(holder.surface)
                         }
 
-                        override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {
-                            if (w > 0 && ht > 0) {
-                                VideoDecoderEngine.bindOutputSurface(h.surface)
-                            }
-                        }
+                        override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
 
                         override fun surfaceDestroyed(holder: SurfaceHolder) {
                             VideoDecoderEngine.unbindSurface()

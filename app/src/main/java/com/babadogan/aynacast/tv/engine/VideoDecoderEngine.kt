@@ -9,6 +9,7 @@ import com.babadogan.aynacast.tv.session.AirPlaySessionManager
 import java.nio.ByteBuffer
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Dedicated hardware/software video decoding pipeline for AirPlay mirroring.
@@ -34,6 +35,9 @@ object VideoDecoderEngine {
     private val queue = ArrayBlockingQueue<Task>(QUEUE_CAPACITY)
     private var workerThread: Thread? = null
     @Volatile private var isRunning = false
+    // Tracks the last surface enqueued (but not yet bound by the worker).
+    // Used to deduplicate rapid-fire BindSurface calls (e.g. surfaceCreated + setFixedSize).
+    private val pendingBindSurface = AtomicReference<Surface?>(null)
 
     private var mediaCodec: MediaCodec? = null
     private var boundSurface: Surface? = null
@@ -64,6 +68,11 @@ object VideoDecoderEngine {
     }
 
     fun bindOutputSurface(surface: Surface) {
+        // Deduplicate: if this exact surface is already pending in the queue, skip
+        if (!pendingBindSurface.compareAndSet(null, surface) && pendingBindSurface.get() === surface) {
+            Log.i(TAG, "bindOutputSurface: Same surface already pending in queue, ignoring redundant bind")
+            return
+        }
         startWorker()
         Log.i(TAG, "Enqueuing BindSurface task")
         queue.offer(Task.BindSurface(surface))
@@ -71,6 +80,7 @@ object VideoDecoderEngine {
 
     fun unbindSurface() {
         Log.i(TAG, "Enqueuing UnbindSurface task")
+        pendingBindSurface.set(null)
         useSoftwareDecoder = false
         queue.offer(Task.UnbindSurface)
     }
@@ -109,6 +119,12 @@ object VideoDecoderEngine {
                 val task = queue.poll(100, TimeUnit.MILLISECONDS) ?: continue
                 when (task) {
                     is Task.BindSurface -> {
+                        if (boundSurface === task.surface && mediaCodec != null) {
+                            Log.i(TAG, "Worker: Surface already bound and codec active, ignoring redundant BindSurface")
+                            pendingBindSurface.compareAndSet(task.surface, null)
+                            continue
+                        }
+                        pendingBindSurface.compareAndSet(task.surface, null)
                         boundSurface = task.surface
                         nextFramePtsUs = 0L
                         if (spsBytes != null && ppsBytes != null) {
@@ -151,6 +167,10 @@ object VideoDecoderEngine {
     private fun rebuildCodec() {
         releaseCodec()
         val surface = boundSurface ?: return
+        if (!surface.isValid) {
+            Log.w(TAG, "Cannot rebuildCodec: bound surface is invalid!")
+            return
+        }
         val sps = spsBytes ?: return
         val pps = ppsBytes ?: return
 
@@ -221,11 +241,15 @@ object VideoDecoderEngine {
         try {
             drainOutput(codec)
 
-            var inIndex = codec.dequeueInputBuffer(0L)
+            val timeoutUs = if (isKeyFrame) 10_000L else 0L
+            val maxRetries = if (isKeyFrame) 10 else 5
+            val retryWaitUs = if (isKeyFrame) 10_000L else 2_000L
+
+            var inIndex = codec.dequeueInputBuffer(timeoutUs)
             var retries = 0
-            while (inIndex < 0 && retries < 5) {
+            while (inIndex < 0 && retries < maxRetries) {
                 drainOutput(codec)
-                inIndex = codec.dequeueInputBuffer(2_000L)
+                inIndex = codec.dequeueInputBuffer(retryWaitUs)
                 retries++
             }
 
