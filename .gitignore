@@ -103,4 +103,7 @@ __pycache__/
 *.log
 hs_err_pid*
 replay_pid*
+
+# Kotlin compiler session data and error logs (Kotlin 2.x)
+.kotlin/
 *.bak
