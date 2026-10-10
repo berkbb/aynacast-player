@@ -9,11 +9,11 @@ This document details the engineering specifications, build requirements, NDK ar
 To compile and debug this project, the following toolchain is required:
 
 - **JDK:** OpenJDK 21 LTS (e.g. Azul Zulu 21.0.12+)
-- **Android SDK:** Compile SDK 35 / Target SDK 35 (Min SDK 26)
+- **Android SDK:** Compile SDK 37.2 (Android 17) / Target SDK 35 (Min SDK 26)
 - **Android NDK:** NDK r30 (`30.0.16248370` or higher)
 - **CMake:** Version 4.1.2 or higher
-- **Android Gradle Plugin (AGP):** 8.6.1+
-- **Kotlin:** 2.0.21+
+- **Android Gradle Plugin (AGP):** 9.4.1 (built-in Kotlin) with Gradle 9.7.1
+- **Kotlin:** 2.2.10 (bundled with AGP 9.4.1; the Compose compiler plugin version must match)
 - **Jetpack Compose Compiler:** Integrated Kotlin Compose Plugin
 
 ### Local Configuration (`local.properties`)

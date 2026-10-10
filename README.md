@@ -1,7 +1,7 @@
 # AynaCast TV — AirPlay & Screen Mirroring Receiver (Android TV & Google TV)
 
 [![Platform](https://img.shields.io/badge/Platform-Android%20TV%20%7C%20Google%20TV-blue.svg)](https://developer.android.com/tv)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.2.10-purple.svg)](https://kotlinlang.org)
 [![Compose TV](https://img.shields.io/badge/Jetpack%20Compose%20for%20TV-1.0.0-green.svg)](https://developer.android.com/jetpack/compose/tv)
 [![NDK](https://img.shields.io/badge/NDK-r30-orange.svg)](https://developer.android.com/ndk)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
