@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older. The receiver identity and its PIN pairings belong to this TV only:
+     restoring them onto another TV would give two receivers the same AirPlay key. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="airplay_identity.xml" />
+    <exclude domain="sharedpref" path="airplay_paired_devices.xml" />
+</full-backup-content>
