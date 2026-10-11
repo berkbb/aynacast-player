@@ -38,15 +38,24 @@ jetpack_compose_airplay/
 │   │   ├── airplay_crypto.h / .cpp       # Ed25519, Curve25519 ECDH & pair-verify cryptographic engine
 │   │   ├── tweetnacl.c / .h              # Self-contained public domain crypto primitives
 │   │   ├── aes.c / .h                    # AES-128-CTR stream encryption
-│   │   ├── raop_rtsp_server.h / .cpp     # RTSP port 7000 listener, dynamic /info plist, TCP 7100 video server
+│   │   ├── raop_rtsp_server.h / .cpp     # RTSP port 7000 listener, dynamic /info plist, TCP 7100 video server, UDP 7011 audio
+│   │   ├── bplist_reader.h / .cpp        # Bounds-checked binary plist reader (+ txtAirPlay reply writer)
+│   │   ├── raop_ntp.h / .cpp             # NTP timing client: sender clock -> local monotonic time
+│   │   ├── video_cast.h / .cpp           # AirPlay video casting (URL / YouTube HLS via FCUP)
+│   │   ├── dmap_parser.h / .cpp          # Now-playing DMAP metadata parser
+│   │   ├── audio_rtp_buffer.h / .cpp     # Audio RTP reorder buffer with retransmission requests
+│   │   ├── alac.c / .h                   # ALAC decoder for audio-only streaming (hardened against corrupt frames)
 │   │   ├── h264_stream_parser.h / .cpp   # AVCC-to-Annex B demuxer & SPS/PPS extractor
 │   │   └── airplay_jni.cpp               # JNI bridge exposing callbacks to Kotlin
 │   │
 │   ├── src/main/java/com/babadogan/aynacast/tv/
 │   │   ├── engine/
 │   │   │   ├── AirPlayNativeBridge.kt    # JNI interface and listener signatures
-│   │   │   ├── VideoDecoderEngine.kt     # Low-latency MediaCodec AVC decoder (KEY_LOW_LATENCY)
-│   │   │   └── AudioPlaybackEngine.kt    # AudioTrack PCM engine with transient AudioFocus
+│   │   │   ├── VideoDecoderEngine.kt     # Low-latency MediaCodec AVC decoder (KEY_LOW_LATENCY, GOP replay)
+│   │   │   ├── H264SpsParser.kt          # SPS resolution parser (pure Kotlin, unit tested)
+│   │   │   ├── AudioPlaybackEngine.kt    # AAC-ELD / AAC-LC MediaCodec decoding + AudioTrack output
+│   │   │   ├── AirPlayAudioFormat.kt     # AudioSpecificConfig builder & volume mapping (unit tested)
+│   │   │   └── AvSync.kt                 # Optional timestamp A/V sync (UxPlay -vsync equivalent)
 │   │   ├── service/
 │   │   │   ├── AirPlayDaemonService.kt   # Foreground daemon, mDNS broadcast & network monitor
 │   │   │   └── BootReceiver.kt           # Autostart daemon on ACTION_BOOT_COMPLETED
@@ -62,13 +71,18 @@ jetpack_compose_airplay/
 │   │   │   └── theme/                    # Material 3 TV themes (System, Dark, Light)
 │   │   └── util/
 │   │       ├── DeviceIdentityHelper.kt   # Dynamic TV system name & MAC address resolution
+│   │       ├── DnsTxtRecord.kt           # DNS-SD TXT wire format (shared by mDNS and GET /info)
 │   │       ├── AndroidDeviceType.kt      # Television form-factor detector
 │   │       └── NotificationPermission.kt # Android 13+ POST_NOTIFICATIONS handler
 │   │
 │   └── src/test/java/com/babadogan/aynacast/tv/ # Unit tests verifying bilingual parity and models
 │       ├── AirPlayStringsTest.kt
+│       ├── AirPlayAudioFormatTest.kt
 │       ├── AppSettingsTest.kt
-│       └── DeviceIdentityHelperTest.kt
+│       ├── DeviceIdentityHelperTest.kt
+│       └── H264SpsParserTest.kt
+│
+└── tools/native-host-tests/               # Host (macOS/Linux) socket-level tests for the C++ core
 ```
 
 ---
@@ -78,8 +92,8 @@ jetpack_compose_airplay/
 ### A. mDNS / Bonjour Advertising
 The application advertises two DNS-SD service types on port 7000 via Android's `NsdManager`:
 1. `_airplay._tcp`: AirPlay video and screen mirroring service.
-   - `model=AppleTV3,2`
-   - `features=0x5A7FFFF7,0x1E`
+   - `model=AppleTV5,3`
+   - `features=0x5A7FFFF7,0x1E` (screen mirroring + audio + URL video playback bits 0 and 4 for video casting — see `AirPlayFeatures.kt`)
    - `srcvers=220.68`
    - `deviceid=<Hardware MAC>`
 2. `_raop._tcp`: Remote Audio Output Protocol service.
@@ -90,11 +104,21 @@ The application advertises two DNS-SD service types on port 7000 via Android's `
 When an Apple client connects to TCP port 7000, the C++ engine processes:
 - `OPTIONS * RTSP/1.0`: Declares supported methods (`ANNOUNCE`, `SETUP`, `RECORD`, `TEARDOWN`, `OPTIONS`, `GET_PARAMETER`, `SET_PARAMETER`, `POST`, `GET`).
 - `GET /info`: Returns Apple-compatible XML property list defining receiver model and features.
-- `POST /pair-setup` and `POST /pair-verify`: Negotiates Curve25519 keys and session parameters.
-- `POST /fp-setup`: Simulates FairPlay key derivation phase 1/2.
-- `SETUP rtsp://...`: Configures UDP transport ports (Video: 7100, Audio: 6000).
-- `RECORD`: Triggers `onStreamStarted()` JNI callback which brings `AirPlayPlayerActivity` to the foreground.
-- `TEARDOWN`: Shuts down the stream and calls `finish()` to return the TV to previous content.
+- `POST /pair-setup` and `POST /pair-verify`: Negotiates Curve25519 keys and session parameters. In step 2 the client's Ed25519 signature over (client ECDH key ‖ server ECDH key) is verified after skipping the 64-byte AES-CTR keystream used in step 1; a bad signature closes the connection (as in UxPlay).
+- `GET /info` with the binary-plist qualifier `txtAirPlay` / `txtRAOP` returns only that TXT record; unknown RTSP methods get `501 Not Implemented`.
+- Timing: after the session `SETUP` the receiver queries the sender's `timingPort` with NTP requests (every 250 ms for the first 8, then every 3 s) and maps sender timestamps (video header bytes 8–15, audio RTCP sync packets) onto the local `CLOCK_MONOTONIC`/`System.nanoTime()` timeline.
+- Video casting (HTTP/1.1 on port 7000, `video_cast.cpp`): `/server-info`, `/reverse` (PTTH event channel), `/play`, `/scrub`, `/rate`, `/stop`, `/playback-info`, `/setProperty`, `/action`. Direct URLs go to the player; YouTube `mlhls://localhost/master.m3u8` playlists are requested from the sender with FCUP events (replies are matched by `FCUP_Response_RequestID`; `FCUP_Response_StatusCode` is 0 on success and is not checked), rewritten to `http://localhost:7000/...` and served to Media3/ExoPlayer. A stop on the TV sends a `stopped` event and closes the casting connections.
+- PIN pairing (`/pair-pin-start`, `/pair-setup-pin`): SRP-6a (SHA-1, RFC 5054 2048-bit group, Apple's 40-byte session key) and AES-128-GCM key exchange in `PinPairingServer.kt`; in PIN mode pair-verify only admits remembered devices.
+- Now playing: `SET_PARAMETER` with `application/x-dmap-tagged` (title/artist/album), `image/jpeg|png` (cover art) and `progress:` feeds the Now Playing screen.
+- Audio RTP: packets are reordered in a 256-slot buffer; a gap triggers one retransmission request (`0x80 0xD5`) to the sender's control port, retransmissions (`0x56`) fill it, and a missing run is skipped after 60 ms so playback never stalls.
+- `POST /fp-setup`: Simulates FairPlay key derivation phase 1/2 (the phase-2 mode byte must be 0–3).
+- Handshake state (pair-verify ECDH secret and signature keys, FairPlay key message) is kept per RTSP connection and forgotten when it closes; the session keys are derived from the handshake of the connection that sends the session `SETUP`.
+- Session ownership: the connection that sends the session `SETUP` (the one carrying `ekey`/`timingPort`) owns the session. Other connections get `409 Conflict` for `SETUP` streams, `RECORD`, `TEARDOWN`, `SET_PARAMETER`, `GET_PARAMETER`, `FLUSH` and `PAUSE`; a new session `SETUP` from another connection takes the session over and shuts the old connection down (Apple TV / UxPlay `-nohold` behaviour). A connection that sends a stream `SETUP` or `RECORD` while no session exists becomes the owner. With PIN pairing on, every `SETUP` and `RECORD` requires a completed pair-verify on that connection (`470` otherwise). The mirroring video port only accepts a connection from the IP of an established session.
+- Limits: 32 open connections, 8 MB request bodies, idle connections closed after 120 s unless they own the session, belong to video casting or come from the session sender's IP; binary plists are parsed with an object-visit cap and a copy budget (4× the document + 1 MB).
+- Identity: the Ed25519 key is derived from a 32-byte seed stored by `ServerIdentityStore` (`setIdentitySeed` before `initNativeServer`), so `pk` is stable across restarts.
+- `SETUP rtsp://...`: Binary-plist SETUP. Session setup (`ekey`/`eiv`) and stream type 110 answer with the video TCP data port 7100; stream type 96 answers with audio UDP data/control ports 7011/7012. The audio codec is taken from `ct` (2 = ALAC decoded natively, 4 = AAC-LC, 8 = AAC-ELD decoded by MediaCodec).
+- `RECORD`: Starts the session (`onStreamStarted()`). The player activity opens when mirrored video actually starts (first SPS/PPS), so audio-only AirPlay keeps the current TV app on screen.
+- `TEARDOWN` (UxPlay semantics): stream type 96 stops audio, stream type 110 stops the mirrored video (the player closes, the session and audio may continue), and a body without streams ends the session; the player then calls `finish()` to return the TV to previous content. If the RTSP connection that sent `RECORD` closes without `TEARDOWN` (Wi-Fi loss, sender sleep), or sends no request (`POST /feedback` arrives every ~2 s) for 15 s, the session is ended the same way.
 
 ### C. Video Pipeline
 - Input: H.264 NAL units (AVCC length-prefixed or raw stream).
@@ -108,7 +132,7 @@ When an Apple client connects to TCP port 7000, the C++ engine processes:
 This project strictly enforces **Turkish as the Default Language** and **English as the Secondary Language**.
 
 When adding a new user-facing string:
-1. Add a method in [`AirPlayStrings.kt`](app/src/main/java/com/airplay/tv/ui/localization/AirPlayStrings.kt) with explicit branches for `AppLanguage.TR` and `AppLanguage.EN`.
+1. Add a method in [`AirPlayStrings.kt`](app/src/main/java/com/babadogan/aynacast/tv/ui/localization/AirPlayStrings.kt) with explicit branches for `AppLanguage.TR` and `AppLanguage.EN`.
 2. Add corresponding XML entries in:
    - `app/src/main/res/values/strings.xml` (Turkish)
    - `app/src/main/res/values-en/strings.xml` (English)
@@ -125,6 +149,15 @@ Run the test suite using Gradle:
 ```bash
 ./gradlew test
 ```
+
+Native AirPlay core (C++) regression tests run on the development machine with AddressSanitizer/UBSan.
+They build the core for the host and drive it over real sockets like an Apple sender (split and pipelined
+RTSP requests, SETUP/TEARDOWN plists, AAC/ALAC audio routing, dropped connections, shutdown with live clients,
+session ownership and takeover, PIN gate, video casting / FCUP ordering, hostile plists, connection limits):
+```bash
+./tools/native-host-tests/run.sh
+```
+Requires `clang`, `clang++` and `python3`; uses TCP ports 17000/17100 and UDP 7011/7012.
 
 To run static analysis and lint vital checks:
 ```bash

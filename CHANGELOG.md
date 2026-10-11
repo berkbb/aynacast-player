@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Native crashes:** Connection threads could outlive the server when the service stopped or restarted (use-after-free); they are now tracked, woken and joined. JNI callback threads are detached from the VM on exit and pending Java exceptions are cleared.
+- **Audio:** Mirroring audio (AAC-ELD) was fed into the ALAC decoder, producing noise and risking a heap overflow. The codec is now taken from the audio `SETUP` (`ct`), AAC is decoded with `MediaCodec`, and the ALAC decoder rejects corrupt frame sizes and zero-runs that overflowed its buffers.
+- **Session lifecycle:** A sender that disappears without `TEARDOWN` (Wi-Fi loss, sleep) no longer leaves the player frozen on screen; the session ends when its RTSP connection closes (TCP keep-alive detects silent drops) or when the session owner sends no `/feedback` heartbeat for 15 s (as UxPlay does).
+- **Audio filler packets:** AAC-ELD "no data" packets (`00 68 34 00`) and 44-byte ALAC filler packets are skipped instead of being decoded; unknown compression types are muted rather than decoded as noise.
+- **RTSP parsing:** Requests split across TCP segments or pipelined in one segment are now framed correctly; `SETUP`/`TEARDOWN` bodies are parsed as binary plists instead of byte searches; device names containing `&` or `<` no longer break the `/info` XML.
+- **Video pipeline:** Surface bind / codec config tasks can no longer be dropped by a full frame queue; the surface is released synchronously in `surfaceDestroyed`; frames buffered since the last keyframe are replayed into a new decoder; oversized access units no longer leak decoder input buffers; SPS parsing removes emulation-prevention bytes.
+- **mDNS:** Opening the app no longer registers duplicate services ("Name (2)"); the advertised `pk` always matches the running server and is also published in the `_raop._tcp` record (as RPiPlay does); network changes re-register only when local addresses change; names longer than the DNS-SD label limit are truncated instead of failing to register.
+- **Device ID:** Placeholder MACs (`02:00:00:00:00:00`) are ignored and derived IDs are valid unicast addresses.
+- **UI:** About screen showed the wrong license (Apache 2.0 → MIT) and a hard-coded version; the port list said "Video UDP 7100" (it is TCP); the service status reflects whether the server is actually listening; the player opens in its own task so closing it returns to the previous TV app.
+- **Lint:** `BluetoothAdapter.getName` is guarded by the Android 12+ `BLUETOOTH_CONNECT` check (lint error).
+
+### Added
+- **UxPlay parity** (checked against FDH2/UxPlay, FD-/RPiPlay and jqssun/android-airplay-server):
+  - NTP timing exchange with the sender's `timingPort`; sender timestamps are mapped onto the local clock.
+  - Audio RTP reorder buffer with retransmission requests to the sender's control port; burst losses are skipped after one short wait instead of stalling.
+  - Pair-verify step 2 signature verification (connection closed on failure).
+  - `GET /info` `txtAirPlay` / `txtRAOP` qualifier replies and `501 Not Implemented` for unknown RTSP methods.
+  - Per-stream `TEARDOWN`: stopping the mirrored video keeps the session (and audio) alive.
+  - Optional "Audio/Video Sync (Timestamps)" setting, the equivalent of UxPlay `-vsync`; off by default as UxPlay recommends for macOS mirroring and hardware decoding.
+- The player opens when mirrored video starts, so audio-only AirPlay no longer shows a black screen.
+
+- **Video casting** (UxPlay `-hls` semantics): an app's AirPlay button can hand its video to the TV instead of mirroring. Direct URLs (Safari and most apps) and YouTube's `mlhls://` playlists (fetched from the sender through FCUP requests and served to the player from `http://localhost:7000`, with `#YT-EXT-CONDENSED-URL` segments expanded) play in a Media3/ExoPlayer screen; the sender controls play/pause/seek, and the TV remote works too. FairPlay-protected video (`/fp-setup2`) is refused, as in UxPlay.
+- **Now Playing screen** for audio-only AirPlay: cover art, title, artist, album (DMAP metadata) and a progress bar, like an Apple TV.
+- **On-screen PIN pairing** (UxPlay `-pin`, off by default in Settings): a 4-digit code is shown the first time a device connects (SRP-6a / AES-GCM `/pair-setup-pin`); paired devices are remembered and can be forgotten.
+
+### Fixed (additional)
+- Device names with emoji no longer crash JNI (standard UTF-8 conversion in both directions).
+- `POST /pair-setup-pin` was routed to the plain `/pair-setup` handler (caught by the native tests).
+- "Display over other apps" permission card (Android 10+) and a fallback notification to open the mirrored screen when the system blocks background launches.
+- "Show Mirroring" button while a session is active, sender name in the HUD, sender volume control, localized (TR/EN) notifications.
+- Unit tests for audio format, SPS parsing and device identity; native host test suite under `tools/native-host-tests/`.
+
+### Security & robustness (full review of the change set)
+- **One session owner:** the connection that sent the session `SETUP` owns the session. `SETUP`/`RECORD`/`TEARDOWN`/`SET_PARAMETER` from another connection get `409 Conflict`, so a second iPhone (or any LAN host) can no longer end or corrupt a running mirror. A new sender's session `SETUP` takes over and disconnects the previous one, like an Apple TV; this also lets a sender that reconnected replace its own stale connection at once. A connection that drops after `SETUP` but before `RECORD` now releases timing, audio and keys.
+- **Per-connection handshakes:** pair-verify and FairPlay state is kept per connection (as UxPlay does), so concurrent handshakes cannot overwrite each other's keys.
+- **Crash fixes:** NTP timing start/stop from different connections could terminate the process (`std::terminate`); a tiny ALAC frame size (`spf`) allowed a heap overflow from one UDP packet; a UTF-16 length overflow and shared-reference / huge-count binary plists could crash or exhaust memory; an out-of-range FairPlay mode byte read past the key tables; corrupt ALAC frames replayed the previous PCM.
+- **Mirroring video port:** only the session's sender can (re)open TCP 7100; a LAN scan no longer cuts the mirror off.
+- **Connection limits:** at most 32 open connections; silent connections that own nothing close after 120 s; request bodies are capped at 8 MB.
+- **PIN pairing:** pairing only works against a code that is on screen (no silent "0000" fallback), allows 3 wrong entries per code, locks for 5 minutes after 9 wrong entries in a row, and the code expires after 2 minutes even when its screen could not be opened. With PIN on, only a connection that completed pair-verify may start a session.
+- **Persistent identity:** the receiver's Ed25519 key is derived from a stored seed, so the advertised `pk` and PIN pairings survive restarts; the identity and pairings are excluded from cloud backup and device transfer.
+- **Video casting:** a closing player screen could stop the next cast and tell the sender "stopped"; late FCUP replies for a previous video were accepted; `/play` before `/reverse` hung forever; `/scrub` and `/rate` sent before the player existed were lost; a missing master playlist left the sender waiting; Home left the video playing invisibly.
+- **Background launches:** the PIN code and casting screens get the same fallback notification as mirroring (the PIN notification shows the code itself).
+- **A/V sync mode:** audio no longer goes permanently silent when the TV's audio path is slower than the video (the shared latency rises instead); inserted silence never crowds out the audio packet. Video frames are now held *before* decoding until they are due, so video can wait as long as the TV's audio needs without filling the display queue and stalling the decoder (frames reach the display at most 50 ms early); the measured video delay excludes that deliberate wait.
+- **Mirroring restart:** after a video-only `TEARDOWN` the next video `SETUP` starts a fresh AES-CTR stream even when it reuses the stream connection ID (as UxPlay), instead of continuing the old keystream into garbage.
+- **GOP replay:** an incomplete GOP replays only its keyframe, replayed frames are not shown except the newest, and a surface teardown interrupts the replay.
+- **TV remote:** the "Show Mirroring" and overlay-permission buttons are reachable with the D-pad.
+- **Second review round:**
+  - YouTube casting: real senders report a successful FCUP reply with status `0`, which the first fix treated as a failure and aborted every YouTube cast; replies are now judged by their content, as in UxPlay.
+  - PIN mode: every `SETUP` and `RECORD` (not only the session `SETUP`) requires a completed pair-verify, and the mirroring video port only accepts a connection from an established session's sender.
+  - Sender names with non-ASCII characters (`Berk’s iPhone`, Turkish letters, emoji) were shown with `?`; UTF-16 plist strings are now decoded to UTF-8.
+  - Idle connections from the session's own sender (e.g. a silent event connection) are no longer closed.
+  - The last frame of a screen change was only shown when the next frame arrived (mirroring is variable-frame-rate); the decoder is now drained while idle.
+  - A sender's play/pause after the TV remote had changed playback was ignored.
+  - Turning A/V sync on or off now takes effect immediately; another device's PIN screen no longer ends a running video cast; plugging in a keyboard or remote, or a UI mode change, no longer restarts the player screens; an old PIN's expiry can no longer cancel a new code.
+- Native tests: 93 → 126 checks; unit tests: 35 → 41 (`VideoCastSessionTest`, A/V sync audio latency).
+
 ## [1.2.0] - 2026-10-03 - Milestone: Mac Screen Mirroring (Video Only / Without Sound)
 
 ### Added

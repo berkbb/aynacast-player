@@ -69,6 +69,12 @@ Built on a two-tier architecture:
   - **Settings Window (`AirPlaySettingsActivity`):** Live service indicator, D-Pad focused controls, appearance selection, language picker, and instructions.
   - **About Window:** Application version, architecture overview, supported network protocols, developer attribution, and legal notice.
 - **TV D-Pad Remote Focus:** Animated high-contrast borders and color shifts when navigating with a television remote control.
+- **Mirrored Audio:** AAC-ELD (screen mirroring) and AAC-LC audio decoded with `MediaCodec`, ALAC decoded natively; sender volume is applied. Out-of-order packets are reordered and lost ones are requested again from the sender.
+- **UxPlay-compatible protocol behaviour:** NTP timing with the sender, verified pair-verify signatures, `txtAirPlay` info replies, per-stream `TEARDOWN`, and an optional timestamp audio/video sync (UxPlay `-vsync`; off by default for the lowest latency, as UxPlay recommends for macOS mirroring and hardware decoding).
+- **Audio-only AirPlay:** Music streamed to the TV shows an Apple TV-like Now Playing screen (cover art, title, artist, progress); Back keeps it playing in the background.
+- **Video casting:** An app's AirPlay button (Safari, YouTube and most video apps) can send its video to the TV instead of mirroring the screen; it plays in a Media3/ExoPlayer player controlled from the iPhone or the TV remote. DRM-protected services (Netflix, Apple TV+, Disney+) are not supported by design.
+- **On-screen PIN (optional):** A 4-digit code can be required the first time a device connects; paired devices are remembered.
+- **Auto-Open on Android 10+:** The settings screen offers the "Display over other apps" permission that Android 10+ requires for the player to open by itself; without it a notification opens the mirrored screen.
 - **Zero-Warning Clean Build:** Fully compliant with Android 14/15/16 SDK guidelines, deprecation-free modern APIs (`BluetoothManager`, `WIFI_MODE_FULL_LOW_LATENCY`, `POST_NOTIFICATIONS`).
 
 ---
@@ -106,7 +112,7 @@ Double-click [`AynaCastTV-Package.command`](AynaCastTV-Package.command) in the p
 
 ### 3. Using Android Studio
 1. Open Android Studio and choose **Open Project**.
-2. Select `/Users/berkbabadogan/Desktop/jetpack_compose_airplay`.
+2. Select the cloned `jetpack_compose_airplay` project folder.
 3. Click **Sync Project with Gradle Files**.
 4. Select your Android TV device/emulator and click **Run 'app'**.
 
@@ -117,7 +123,12 @@ Double-click [`AynaCastTV-Package.command`](AynaCastTV-Package.command) in the p
 This project includes verified unit tests ensuring zero regressions:
 - **`AirPlayStringsTest`:** Validates non-blank strings, bilingual distinctiveness, and 1:1 XML resource matching between Turkish and English.
 - **`AppSettingsTest`:** Validates default language (Turkish), default theme (System), and parsing rules.
-- **`DeviceIdentityHelperTest`:** Validates MAC address formatting and RAOP prefix extraction.
+- **`DeviceIdentityHelperTest`:** Validates MAC formatting, placeholder-MAC rejection, derived device IDs and mDNS name length limits.
+- **`AirPlayAudioFormatTest`:** Validates AAC-ELD / AAC-LC AudioSpecificConfig bytes and AirPlay volume mapping.
+- **`H264SpsParserTest`:** Validates SPS resolution parsing (cropping, emulation-prevention bytes).
+- **`AvSyncTest`, `PinPairingServerTest`, `AirPlayFeaturesTest`, `DnsTxtRecordTest`:** A/V sync latency rules, SRP/GCM PIN pairing against independent vectors, advertised feature bits and TXT encoding.
+- **`VideoCastSessionTest`:** Video casting state: a closing player cannot stop or report for the cast that replaced it, and sender seeks/rates sent before the player exists are kept.
+- **Native host tests (`tools/native-host-tests/run.sh`):** Drive the C++ AirPlay core over real sockets under AddressSanitizer/UBSan (126 checks: protocol, audio/video, video casting, PIN pairing, session ownership, hostile input).
 
 Run all tests via:
 ```bash
