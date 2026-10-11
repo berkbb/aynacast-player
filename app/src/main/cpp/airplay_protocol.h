@@ -57,11 +57,14 @@ struct RtspRequest {
 };
 
 struct RtspResponse {
+    std::string protocol{"RTSP/1.0"}; // "HTTP/1.1" for AirPlay video casting requests
     int statusCode{200};
     std::string statusMessage{"OK"};
     std::unordered_map<std::string, std::string> headers;
     std::vector<uint8_t> body;
-    
+    bool closeConnection{false}; // Drop the connection after sending (e.g. failed pair-verify)
+    bool becomeReverse{false};   // POST /reverse: the connection now carries receiver->sender events
+
     std::string serialize() const;
 };
 

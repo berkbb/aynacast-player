@@ -5,7 +5,12 @@ project("airplaycore")
 add_library(airplaycore SHARED
     airplay_jni.cpp
     airplay_crypto.cpp
+    audio_rtp_buffer.cpp
+    bplist_reader.cpp
+    dmap_parser.cpp
+    raop_ntp.cpp
     raop_rtsp_server.cpp
+    video_cast.cpp
     h264_stream_parser.cpp
     tweetnacl.c
     aes.c

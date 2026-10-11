@@ -201,6 +201,7 @@ extern int crypto_secretbox_xsalsa20poly1305_tweet_open(unsigned char *,const un
 #define crypto_sign crypto_sign_ed25519
 #define crypto_sign_open crypto_sign_ed25519_open
 #define crypto_sign_keypair crypto_sign_ed25519_keypair
+extern int crypto_sign_seed_keypair(unsigned char *,unsigned char *,const unsigned char *);
 #define crypto_sign_BYTES crypto_sign_ed25519_BYTES
 #define crypto_sign_PUBLICKEYBYTES crypto_sign_ed25519_PUBLICKEYBYTES
 #define crypto_sign_SECRETKEYBYTES crypto_sign_ed25519_SECRETKEYBYTES

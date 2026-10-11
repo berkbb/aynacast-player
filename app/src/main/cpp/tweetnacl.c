@@ -655,11 +655,19 @@ sv scalarbase(gf p[4],const u8 *s)
 
 int crypto_sign_keypair(u8 *pk, u8 *sk)
 {
+  u8 seed[32];
+  randombytes(seed, 32);
+  return crypto_sign_seed_keypair(pk, sk, seed);
+}
+
+/* Deterministic variant (as in libsodium): the same 32-byte seed always gives the same key pair. */
+int crypto_sign_seed_keypair(u8 *pk, u8 *sk, const u8 *seed)
+{
   u8 d[64];
   gf p[4];
   int i;
 
-  randombytes(sk, 32);
+  FOR(i,32) sk[i] = seed[i];
   crypto_hash(d, sk, 32);
   d[0] &= 248;
   d[31] &= 127;
