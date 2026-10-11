@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <!-- AirPlay video casting: the player reads the receiver's own rewritten playlists from
+         http://localhost and plays media URLs handed over by apps, which are often plain HTTP
+         on arbitrary hosts. Cleartext is therefore allowed on purpose. -->
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>

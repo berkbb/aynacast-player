@@ -105,7 +105,12 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    testImplementation("junit:junit:4.13.2")
+    // AirPlay video casting (URL / HLS playback)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.ui)
+
+    testImplementation(libs.junit)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

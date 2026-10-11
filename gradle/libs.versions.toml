@@ -9,6 +9,8 @@ composeBom = "2024.10.00"
 tvCompose = "1.0.0"
 tvMaterial = "1.0.0"
 coroutines = "1.9.0"
+junit = "4.13.2"
+media3 = "1.6.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -23,6 +25,10 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3" 
 androidx-tv-foundation = { group = "androidx.tv", name = "tv-foundation", version.ref = "tvCompose" }
 androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+androidx-media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
+androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
