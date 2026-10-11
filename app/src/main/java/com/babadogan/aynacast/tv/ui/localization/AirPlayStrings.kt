@@ -31,8 +31,8 @@ object AirPlayStrings {
     }
 
     fun deviceInfoPort(lang: AppLanguage): String = when (lang) {
-        AppLanguage.TR -> "Protokol & Port: RTSP 7000 • Video UDP 7100"
-        AppLanguage.EN -> "Protocol & Port: RTSP 7000 • Video UDP 7100"
+        AppLanguage.TR -> "Protokol & Port: RTSP 7000 • Video TCP 7100 • Ses UDP 7011"
+        AppLanguage.EN -> "Protocol & Port: RTSP 7000 • Video TCP 7100 • Audio UDP 7011"
     }
 
     fun deviceInfoResolution(lang: AppLanguage): String = when (lang) {
@@ -163,8 +163,8 @@ object AirPlayStrings {
     }
 
     fun aboutProtocolsDesc(lang: AppLanguage): String = when (lang) {
-        AppLanguage.TR -> "Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Donanım Çözücü, Low-Latency PCM AudioTrack."
-        AppLanguage.EN -> "Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Hardware Decoder, Low-Latency PCM AudioTrack."
+        AppLanguage.TR -> "Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Donanım Çözücü, AAC-ELD / ALAC Ses, AudioTrack."
+        AppLanguage.EN -> "Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Hardware Decoder, AAC-ELD / ALAC Audio, AudioTrack."
     }
 
     fun aboutDeveloperTitle(lang: AppLanguage): String = when (lang) {
@@ -183,8 +183,8 @@ object AirPlayStrings {
     }
 
     fun aboutLicenseDesc(lang: AppLanguage): String = when (lang) {
-        AppLanguage.TR -> "Apache 2.0 Açık Kaynak Lisansı ile korunmaktadır."
-        AppLanguage.EN -> "Protected under the Apache 2.0 Open Source License."
+        AppLanguage.TR -> "MIT Açık Kaynak Lisansı ile lisanslanmıştır."
+        AppLanguage.EN -> "Licensed under the MIT Open Source License."
     }
 
     fun aboutDisclaimerTitle(lang: AppLanguage): String = when (lang) {
@@ -195,5 +195,155 @@ object AirPlayStrings {
     fun aboutDisclaimerDesc(lang: AppLanguage): String = when (lang) {
         AppLanguage.TR -> "AirPlay, Apple TV, iPhone, iPad ve Mac; Apple Inc.'in ABD ve diğer ülkelerde tescilli ticari markalarıdır. Bu bağımsız açık kaynak projesi Apple Inc. ile ilişkili değildir, Apple tarafından onaylanmamış veya desteklenmemiştir. Uygulama yalnızca yerel ağda birlikte çalışabilirlik amacıyla geliştirilmiş olup hiçbir telifli DRM/FairPlay içeriği kırmaz veya şifresini çözmez."
         AppLanguage.EN -> "AirPlay, Apple TV, iPhone, iPad, and Mac are registered trademarks of Apple Inc., registered in the U.S. and other countries. This independent open-source project is not affiliated with, sponsored, or endorsed by Apple Inc. It is developed solely for local network device interoperability and research, and does not decrypt or circumvent DRM-protected streams."
+    }
+
+    fun showMirroring(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yansıtmayı Göster"
+        AppLanguage.EN -> "Show Mirroring"
+    }
+
+    fun serviceStatusStarting(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Servis başlatılıyor veya AirPlay portu (7000) kullanılamıyor. Gerekirse servisi yeniden başlatın."
+        AppLanguage.EN -> "The service is starting or the AirPlay port (7000) is unavailable. Restart the service if needed."
+    }
+
+    fun overlayPermissionTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Otomatik Açılma İzni"
+        AppLanguage.EN -> "Auto-Open Permission"
+    }
+
+    fun overlayPermissionDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Android 10 ve üzeri sürümler, başka bir uygulama açıkken yansıtma ekranının kendiliğinden açılması için \"Diğer uygulamaların üzerinde göster\" iznini ister. İzin verilmezse yansıtma başladığında bildirimden açabilirsiniz."
+        AppLanguage.EN -> "Android 10 and later require the \"Display over other apps\" permission so the mirroring screen can open by itself while another app is in use. Without it, open the mirroring screen from the notification."
+    }
+
+    fun overlayPermissionButton(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "İzni Ver"
+        AppLanguage.EN -> "Grant Permission"
+    }
+
+    fun overlayPermissionUnavailable(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bu TV izin ekranını sunmuyor. Bilgisayardan şu komutla verebilirsiniz: adb shell appops set com.babadogan.aynacast.tv SYSTEM_ALERT_WINDOW allow"
+        AppLanguage.EN -> "This TV does not offer the permission screen. Grant it from a computer with: adb shell appops set com.babadogan.aynacast.tv SYSTEM_ALERT_WINDOW allow"
+    }
+
+    fun notificationServiceChannel(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay Alıcı Servisi"
+        AppLanguage.EN -> "AirPlay Receiver Service"
+    }
+
+    fun notificationServiceChannelDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Gelen AirPlay bağlantılarını arka planda dinler."
+        AppLanguage.EN -> "Listens for incoming AirPlay connections in the background."
+    }
+
+    fun notificationServiceTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay Alıcısı Aktif"
+        AppLanguage.EN -> "AirPlay Receiver Active"
+    }
+
+    fun notificationServiceText(deviceName: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "'$deviceName' ağda yayınlanıyor (Apple cihazlarından yansıtabilirsiniz)"
+        AppLanguage.EN -> "Broadcasting as '$deviceName' (mirror from your Apple devices)"
+    }
+
+    fun notificationStreamChannel(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Ekran Yansıtma"
+        AppLanguage.EN -> "Screen Mirroring"
+    }
+
+    fun notificationStreamTitle(clientName: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "$clientName ekranını yansıtıyor"
+        AppLanguage.EN -> "$clientName is mirroring"
+    }
+
+    fun notificationStreamText(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yansıtma ekranını açmak için seçin."
+        AppLanguage.EN -> "Select to open the mirroring screen."
+    }
+
+    fun avSyncTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Ses-Görüntü Senkronu (Zaman Damgası)"
+        AppLanguage.EN -> "Audio/Video Sync (Timestamps)"
+    }
+
+    fun avSyncDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Açıkken ses ve görüntü göndericinin zaman damgalarına göre eşlenir (UxPlay -vsync); gecikme artar ve geç kalan kareler atlanır. Kapalıyken her şey geldiği anda oynatılır: Mac yansıtma ve donanım çözücülü TV'ler için önerilen en düşük gecikmeli mod."
+        AppLanguage.EN -> "When on, audio and video are aligned to the sender's timestamps (UxPlay -vsync); latency increases and late frames are skipped. When off, everything plays as soon as it arrives: the lowest-latency mode recommended for Mac mirroring and hardware-decoding TVs."
+    }
+
+    fun avSyncOff(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kapalı – En Düşük Gecikme (Önerilen)"
+        AppLanguage.EN -> "Off – Lowest Latency (Recommended)"
+    }
+
+    fun avSyncOn(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Açık – Zaman Damgası Senkronu"
+        AppLanguage.EN -> "On – Timestamp Sync"
+    }
+
+    fun nowPlayingFrom(clientName: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "$clientName cihazından AirPlay ile çalıyor"
+        AppLanguage.EN -> "Playing from $clientName via AirPlay"
+    }
+
+    fun nowPlayingUnknownTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bilinmeyen Şarkı"
+        AppLanguage.EN -> "Unknown Track"
+    }
+
+    fun nowPlayingPaused(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Duraklatıldı"
+        AppLanguage.EN -> "Paused"
+    }
+
+    fun pinTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay Kodu"
+        AppLanguage.EN -> "AirPlay Code"
+    }
+
+    fun pinInstructions(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bu kodu iPhone, iPad veya Mac'inizde girin. Kod yalnızca bu cihazdan ilk bağlanışta sorulur."
+        AppLanguage.EN -> "Enter this code on your iPhone, iPad or Mac. It is only asked the first time this device connects."
+    }
+
+    fun notificationPinText(pin: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "iPhone, iPad veya Mac'inizde şu kodu girin: $pin"
+        AppLanguage.EN -> "Enter this code on your iPhone, iPad or Mac: $pin"
+    }
+
+    fun notificationVideoCastTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay videosu hazır"
+        AppLanguage.EN -> "AirPlay video ready"
+    }
+
+    fun notificationVideoCastText(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Oynatmak için seçin."
+        AppLanguage.EN -> "Select to play."
+    }
+
+    fun pinSettingTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bağlantı Kodu (PIN)"
+        AppLanguage.EN -> "Connection Code (PIN)"
+    }
+
+    fun pinSettingDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Açıkken yeni bir Apple cihazı ilk kez bağlanırken TV'de 4 haneli bir kod gösterilir ve cihazda girilmesi gerekir; eşleşen cihazlar hatırlanır."
+        AppLanguage.EN -> "When on, a new Apple device connecting for the first time must enter the 4-digit code shown on the TV; paired devices are remembered."
+    }
+
+    fun pinOff(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kapalı – Kod Sorma"
+        AppLanguage.EN -> "Off – No Code"
+    }
+
+    fun pinOn(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Açık – İlk Bağlantıda Kod"
+        AppLanguage.EN -> "On – Code on First Connection"
+    }
+
+    fun pinForgetDevices(count: Int, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Eşleşmiş Cihazları Unut ($count)"
+        AppLanguage.EN -> "Forget Paired Devices ($count)"
     }
 }

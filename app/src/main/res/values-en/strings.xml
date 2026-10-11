@@ -24,11 +24,32 @@
     <string name="about_architecture_title">Architecture Design</string>
     <string name="about_architecture_desc">Foreground Daemon Service + On-Demand Jetpack Compose for TV Interface.</string>
     <string name="about_protocols_title">Supported Protocols &amp; Engines</string>
-    <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Hardware Decoder, Low-Latency PCM AudioTrack.</string>
+    <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Hardware Decoder, AAC-ELD / ALAC Audio, AudioTrack.</string>
     <string name="about_developer_title">Developer &amp; Copyright</string>
     <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara University Technopolis</string>
     <string name="about_license_title">License</string>
-    <string name="about_license_desc">Protected under the Apache 2.0 Open Source License.</string>
+    <string name="about_license_desc">Licensed under the MIT Open Source License.</string>
     <string name="about_disclaimer_title">Legal Disclaimer &amp; Trademark Notice</string>
     <string name="about_disclaimer_desc">AirPlay, Apple TV, iPhone, iPad, and Mac are registered trademarks of Apple Inc., registered in the U.S. and other countries and regions. This independent open-source project is not affiliated with, sponsored, or endorsed by Apple Inc. It is developed solely for local network device interoperability and research, and does not decrypt or circumvent DRM-protected streams.</string>
+
+    <!-- Mirroring, permission & notification strings -->
+    <string name="show_mirroring">Show Mirroring</string>
+    <string name="overlay_permission_title">Auto-Open Permission</string>
+    <string name="overlay_permission_button">Grant Permission</string>
+    <string name="notification_service_channel">AirPlay Receiver Service</string>
+    <string name="notification_service_title">AirPlay Receiver Active</string>
+    <string name="notification_stream_channel">Screen Mirroring</string>
+    <string name="notification_stream_text">Select to open the mirroring screen.</string>
+    <string name="av_sync_title">Audio/Video Sync (Timestamps)</string>
+    <string name="av_sync_off">Off – Lowest Latency (Recommended)</string>
+    <string name="av_sync_on">On – Timestamp Sync</string>
+    <string name="now_playing_unknown_title">Unknown Track</string>
+    <string name="now_playing_paused">Paused</string>
+    <string name="pin_title">AirPlay Code</string>
+    <string name="notification_pin_text">Enter this code on your iPhone, iPad or Mac: %1$s</string>
+    <string name="notification_video_cast_title">AirPlay video ready</string>
+    <string name="notification_video_cast_text">Select to play.</string>
+    <string name="pin_setting_title">Connection Code (PIN)</string>
+    <string name="pin_off">Off – No Code</string>
+    <string name="pin_on">On – Code on First Connection</string>
 </resources>

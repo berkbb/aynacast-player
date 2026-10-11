@@ -24,11 +24,32 @@
     <string name="about_architecture_title">Mimari Tasarım</string>
     <string name="about_architecture_desc">Arka Plan Daemon Servisi (Foreground Daemon) + İhtiyaç Anında Açılan Compose TV Arayüzü (On-Demand UI).</string>
     <string name="about_protocols_title">Desteklenen Protokoller ve Motorlar</string>
-    <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Donanım Çözücü, Low-Latency PCM AudioTrack.</string>
+    <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Donanım Çözücü, AAC-ELD / ALAC Ses, AudioTrack.</string>
     <string name="about_developer_title">Geliştirici ve Telif</string>
     <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara Üniversitesi Teknokent</string>
     <string name="about_license_title">Lisans</string>
-    <string name="about_license_desc">Apache 2.0 Açık Kaynak Lisansı ile korunmaktadır.</string>
+    <string name="about_license_desc">MIT Açık Kaynak Lisansı ile lisanslanmıştır.</string>
     <string name="about_disclaimer_title">Yasal Uyarı ve Marka Bildirimi</string>
     <string name="about_disclaimer_desc">AirPlay, Apple TV, iPhone, iPad ve Mac; Apple Inc.\'in ABD ve diğer ülkelerde tescilli ticari markalarıdır. Bu bağımsız açık kaynak projesi Apple Inc. ile ilişkili değildir, Apple tarafından onaylanmamış veya desteklenmemiştir. Uygulama yalnızca yerel ağda birlikte çalışabilirlik amacıyla geliştirilmiş olup hiçbir telifli DRM/FairPlay içeriği kırmaz veya şifresini çözmez.</string>
+
+    <!-- Mirroring, permission & notification strings -->
+    <string name="show_mirroring">Yansıtmayı Göster</string>
+    <string name="overlay_permission_title">Otomatik Açılma İzni</string>
+    <string name="overlay_permission_button">İzni Ver</string>
+    <string name="notification_service_channel">AirPlay Alıcı Servisi</string>
+    <string name="notification_service_title">AirPlay Alıcısı Aktif</string>
+    <string name="notification_stream_channel">Ekran Yansıtma</string>
+    <string name="notification_stream_text">Yansıtma ekranını açmak için seçin.</string>
+    <string name="av_sync_title">Ses-Görüntü Senkronu (Zaman Damgası)</string>
+    <string name="av_sync_off">Kapalı – En Düşük Gecikme (Önerilen)</string>
+    <string name="av_sync_on">Açık – Zaman Damgası Senkronu</string>
+    <string name="now_playing_unknown_title">Bilinmeyen Şarkı</string>
+    <string name="now_playing_paused">Duraklatıldı</string>
+    <string name="pin_title">AirPlay Kodu</string>
+    <string name="notification_pin_text">iPhone, iPad veya Mac\'inizde şu kodu girin: %1$s</string>
+    <string name="notification_video_cast_title">AirPlay videosu hazır</string>
+    <string name="notification_video_cast_text">Oynatmak için seçin.</string>
+    <string name="pin_setting_title">Bağlantı Kodu (PIN)</string>
+    <string name="pin_off">Kapalı – Kod Sorma</string>
+    <string name="pin_on">Açık – İlk Bağlantıda Kod</string>
 </resources>
