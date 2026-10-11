@@ -1,22 +1,18 @@
 #include "airplay_crypto.h"
+#include "bplist_reader.h"
 #include <android/log.h>
+#include <cstdlib>
 #include <cstring>
-#include <random>
 #include <algorithm>
-#include <functional>
 
 extern "C" {
 #include "tweetnacl.h"
 #include "aes.h"
 #include "playfair/playfair.h"
 
+// Key material must come from the platform CSPRNG (bionic's arc4random is backed by getrandom()).
 void randombytes(unsigned char* ptr, unsigned long long length) {
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<uint32_t> dis;
-    for (unsigned long long i = 0; i < length; ++i) {
-        ptr[i] = static_cast<unsigned char>(dis(gen) & 0xFF);
-    }
+    arc4random_buf(ptr, static_cast<size_t>(length));
 }
 }
 
@@ -66,38 +62,55 @@ void AirPlayCrypto::initializeKeys() {
     serverEd25519Pk_.resize(32);
     serverEd25519Sk_.resize(64);
 
-    // Generate long-term Ed25519 identity keypair
+    // Generate long-term Ed25519 identity keypair (replaced by setIdentitySeed when one is stored)
     crypto_sign_keypair(serverEd25519Pk_.data(), serverEd25519Sk_.data());
-
-    generateEphemeralCurve25519KeyPair();
-
-    aesKey_.assign(16, 0);
-    aesIv_.assign(16, 0);
 
     keysInitialized_ = true;
     LOGI("Cryptographic subsystem initialized. Public key: %s", getEd25519PublicKeyHex().c_str());
 }
 
-bool AirPlayCrypto::generateEphemeralCurve25519KeyPair() {
-    serverEcdhSk_.resize(32);
-    serverEcdhPk_.resize(32);
-
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<uint32_t> dis;
-
-    for (size_t i = 0; i < 32; i += 4) {
-        uint32_t val = dis(gen);
-        std::memcpy(&serverEcdhSk_[i], &val, 4);
-    }
-
-    // Clamp private key per Curve25519 / RFC 7748
-    serverEcdhSk_[0] &= 248;
-    serverEcdhSk_[31] &= 127;
-    serverEcdhSk_[31] |= 64;
-
-    crypto_scalarmult_base(serverEcdhPk_.data(), serverEcdhSk_.data());
+bool AirPlayCrypto::setIdentitySeed(const std::vector<uint8_t>& seed) {
+    if (seed.size() != 32) return false;
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
+    crypto_sign_seed_keypair(serverEd25519Pk_.data(), serverEd25519Sk_.data(), seed.data());
+    LOGI("Persistent identity loaded. Public key: %s", getEd25519PublicKeyHex().c_str());
     return true;
+}
+
+namespace {
+
+constexpr size_t kMaxHandshakes = 64;
+
+void generateEphemeralKeyPair(std::vector<uint8_t>& pk, std::vector<uint8_t>& sk) {
+    sk.resize(32);
+    pk.resize(32);
+    randombytes(sk.data(), sk.size());
+    // Clamp private key per Curve25519 / RFC 7748
+    sk[0] &= 248;
+    sk[31] &= 127;
+    sk[31] |= 64;
+    crypto_scalarmult_base(pk.data(), sk.data());
+}
+
+} // namespace
+
+AirPlayCrypto::Handshake& AirPlayCrypto::handshakeLocked(uint64_t connectionId) {
+    auto it = handshakes_.find(connectionId);
+    if (it != handshakes_.end()) return it->second;
+    // Connections are forgotten when they close; this only guards against unbounded growth.
+    if (handshakes_.size() >= kMaxHandshakes) handshakes_.erase(handshakes_.begin());
+    return handshakes_[connectionId];
+}
+
+bool AirPlayCrypto::isPairVerified(uint64_t connectionId) const {
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
+    auto it = handshakes_.find(connectionId);
+    return it != handshakes_.end() && it->second.verified;
+}
+
+void AirPlayCrypto::forgetConnection(uint64_t connectionId) {
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
+    handshakes_.erase(connectionId);
 }
 
 std::string AirPlayCrypto::getEd25519PublicKeyBase64() const {
@@ -108,16 +121,6 @@ std::string AirPlayCrypto::getEd25519PublicKeyHex() const {
     return hexEncode(serverEd25519Pk_.data(), serverEd25519Pk_.size());
 }
 
-bool AirPlayCrypto::computeSharedSecret(const uint8_t* peerPublicKey, std::vector<uint8_t>& sharedSecret) {
-    if (!peerPublicKey) return false;
-    sharedSecret.resize(32);
-    if (crypto_scalarmult(sharedSecret.data(), serverEcdhSk_.data(), peerPublicKey) != 0) {
-        LOGE("Failed to compute Curve25519 shared secret");
-        return false;
-    }
-    return true;
-}
-
 bool AirPlayCrypto::handlePairSetup(const std::vector<uint8_t>& reqBody, std::vector<uint8_t>& respBody) {
     LOGI("Processing /pair-setup request (size: %zu)", reqBody.size());
     // Responds with server's 32-byte Ed25519 public key
@@ -125,22 +128,30 @@ bool AirPlayCrypto::handlePairSetup(const std::vector<uint8_t>& reqBody, std::ve
     return true;
 }
 
-bool AirPlayCrypto::handlePairVerify(const std::vector<uint8_t>& reqBody, std::vector<uint8_t>& respBody) {
+bool AirPlayCrypto::handlePairVerify(uint64_t connectionId, const std::vector<uint8_t>& reqBody,
+                                     std::vector<uint8_t>& respBody) {
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
     LOGI("Processing /pair-verify request (size: %zu)", reqBody.size());
+    Handshake& hs = handshakeLocked(connectionId);
 
     // Step 1: Client sends 68 bytes (flag 0x01 + 32-byte client Curve25519 key + 32 bytes)
     if (reqBody.size() >= 68 && reqBody[0] == 0x01) {
         const uint8_t* clientEcdhPk = reqBody.data() + 4;
+        hs.verified = false;
+        hs.clientEcdhPk.assign(clientEcdhPk, clientEcdhPk + 32);
+        hs.clientEd25519Pk.assign(reqBody.data() + 36, reqBody.data() + 68);
 
-        // Generate fresh ephemeral Curve25519 keypair for this session
-        generateEphemeralCurve25519KeyPair();
+        // Generate fresh ephemeral Curve25519 keypair for this handshake
+        generateEphemeralKeyPair(hs.serverEcdhPk, hs.serverEcdhSk);
 
         // 1. Shared secret via Curve25519
-        std::vector<uint8_t> sharedSecret;
-        if (!computeSharedSecret(clientEcdhPk, sharedSecret)) {
+        std::vector<uint8_t> sharedSecret(32);
+        if (crypto_scalarmult(sharedSecret.data(), hs.serverEcdhSk.data(), clientEcdhPk) != 0) {
+            LOGE("Failed to compute Curve25519 shared secret");
+            hs.sharedSecret.clear();
             return false;
         }
-        sharedSecret_ = sharedSecret;
+        hs.sharedSecret = sharedSecret;
 
         // 2. Derive AES Key: SHA512("Pair-Verify-AES-Key" + sharedSecret)[0..15]
         const std::string keySalt = "Pair-Verify-AES-Key";
@@ -149,7 +160,7 @@ bool AirPlayCrypto::handlePairVerify(const std::vector<uint8_t>& reqBody, std::v
 
         uint8_t shaKey[64];
         crypto_hash(shaKey, keyMat.data(), keyMat.size());
-        aesKey_.assign(shaKey, shaKey + 16);
+        hs.aesKey.assign(shaKey, shaKey + 16);
 
         // 3. Derive AES IV: SHA512("Pair-Verify-AES-IV" + sharedSecret)[0..15]
         const std::string ivSalt = "Pair-Verify-AES-IV";
@@ -158,11 +169,11 @@ bool AirPlayCrypto::handlePairVerify(const std::vector<uint8_t>& reqBody, std::v
 
         uint8_t shaIv[64];
         crypto_hash(shaIv, ivMat.data(), ivMat.size());
-        aesIv_.assign(shaIv, shaIv + 16);
+        hs.aesIv.assign(shaIv, shaIv + 16);
 
         // 4. Construct message to sign: serverEcdhPk (32) + clientEcdhPk (32) = 64 bytes
         uint8_t msgToSign[64];
-        std::memcpy(msgToSign, serverEcdhPk_.data(), 32);
+        std::memcpy(msgToSign, hs.serverEcdhPk.data(), 32);
         std::memcpy(msgToSign + 32, clientEcdhPk, 32);
 
         // 5. Sign with long-term Ed25519 private key
@@ -175,23 +186,53 @@ bool AirPlayCrypto::handlePairVerify(const std::vector<uint8_t>& reqBody, std::v
 
         // 6. Encrypt signature with AES-128-CTR
         struct AES_ctx aesCtx;
-        AES_init_ctx_iv(&aesCtx, aesKey_.data(), aesIv_.data());
+        AES_init_ctx_iv(&aesCtx, hs.aesKey.data(), hs.aesIv.data());
         AES_CTR_xcrypt_buffer(&aesCtx, signature, 64);
 
         // 7. Assemble 96-byte response: serverEcdhPk (32) + encryptedSignature (64)
         respBody.clear();
         respBody.reserve(96);
-        respBody.insert(respBody.end(), serverEcdhPk_.begin(), serverEcdhPk_.end());
+        respBody.insert(respBody.end(), hs.serverEcdhPk.begin(), hs.serverEcdhPk.end());
         respBody.insert(respBody.end(), signature, signature + 64);
 
         LOGI("Pair-verify Step 1 completed successfully (response size: %zu)", respBody.size());
         return true;
     }
 
-    // Step 2: Client sends 68 bytes (flag 0x00 + 64-byte client signature) -> Server replies with 0 bytes
+    // Step 2: Client sends 68 bytes (flag 0x00 + 64-byte encrypted signature) -> Server replies with 0 bytes.
+    // As in UxPlay's pairing_session_finish, the signature over (client ECDH key || server ECDH key) is
+    // verified with the Ed25519 key the client presented in step 1.
     if (reqBody.size() >= 4 && reqBody[0] == 0x00) {
-        LOGI("Pair-verify Step 2 completed successfully. Channel authenticated.");
         respBody.clear();
+        if (reqBody.size() < 68 || hs.clientEd25519Pk.size() != 32 || hs.clientEcdhPk.size() != 32 ||
+            hs.sharedSecret.size() != 32) {
+            LOGE("Pair-verify step 2 without a valid step 1; rejecting client.");
+            return false;
+        }
+
+        uint8_t signature[64];
+        std::memcpy(signature, reqBody.data() + 4, 64);
+        struct AES_ctx aesCtx;
+        AES_init_ctx_iv(&aesCtx, hs.aesKey.data(), hs.aesIv.data());
+        // One "fake round": the first 64 keystream bytes encrypted the server's step-1 signature.
+        uint8_t skipped[64] = {0};
+        AES_CTR_xcrypt_buffer(&aesCtx, skipped, sizeof(skipped));
+        AES_CTR_xcrypt_buffer(&aesCtx, signature, sizeof(signature));
+
+        // crypto_sign_open expects the signed message as signature || message.
+        uint8_t signedMsg[128];
+        std::memcpy(signedMsg, signature, 64);
+        std::memcpy(signedMsg + 64, hs.clientEcdhPk.data(), 32);
+        std::memcpy(signedMsg + 96, hs.serverEcdhPk.data(), 32);
+        uint8_t opened[128];
+        unsigned long long openedLen = 0;
+        if (crypto_sign_open(opened, &openedLen, signedMsg, sizeof(signedMsg), hs.clientEd25519Pk.data()) != 0) {
+            LOGE("Incorrect pair-verify signature; rejecting client.");
+            hs.verified = false;
+            return false;
+        }
+        hs.verified = true;
+        LOGI("Pair-verify Step 2 completed successfully. Channel authenticated.");
         return true;
     }
 
@@ -242,19 +283,27 @@ static const uint8_t reply_message[4][142] = {
      0x9c,0x22,0x7d,0x82,0x0c,0x99,0x94,0x45,0xd8,0x92,0x46,0xc8,0xc3,0x59}
 };
 
-bool AirPlayCrypto::handleFpSetup(const std::vector<uint8_t>& reqBody, std::vector<uint8_t>& respBody) {
+bool AirPlayCrypto::handleFpSetup(uint64_t connectionId, const std::vector<uint8_t>& reqBody,
+                                  std::vector<uint8_t>& respBody) {
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
     LOGI("Processing /fp-setup request (size: %zu)", reqBody.size());
+    Handshake& hs = handshakeLocked(connectionId);
     respBody.clear();
     if (reqBody.size() == 16) {
         // FairPlay Phase 1 (142 bytes)
         int mode = reqBody[14] % 4;
         respBody.assign(reply_message[mode], reply_message[mode] + 142);
-        fpKeyMsg_.clear();
+        hs.fpKeyMsg.clear();
         LOGI("FairPlay SAP Step 1 OK (mode: %d, response size: 142)", mode);
         return true;
     } else if (reqBody.size() >= 164) {
-        // FairPlay Phase 2 handshake (32 bytes response)
-        fpKeyMsg_.assign(reqBody.begin(), reqBody.begin() + 164);
+        // FairPlay Phase 2 handshake (32 bytes response). Byte 12 selects one of the 4 key tables
+        // playfair_decrypt indexes later, so it must be validated here (UxPlay checks byte 4).
+        if (reqBody[4] != 0x03 || reqBody[12] >= 4) {
+            LOGE("Rejecting malformed FairPlay key message");
+            return false;
+        }
+        hs.fpKeyMsg.assign(reqBody.begin(), reqBody.begin() + 164);
         static const uint8_t fpHeader[12] = {0x46, 0x50, 0x4c, 0x59, 0x03, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x14};
         respBody.assign(fpHeader, fpHeader + 12);
         respBody.insert(respBody.end(), reqBody.begin() + 144, reqBody.begin() + 164);
@@ -266,172 +315,29 @@ bool AirPlayCrypto::handleFpSetup(const std::vector<uint8_t>& reqBody, std::vect
 
 namespace {
 
-uint64_t readBigEndianUInt(const uint8_t* buf, size_t size) {
-    uint64_t res = 0;
-    for (size_t i = 0; i < size; ++i) {
-        res = (res << 8) | buf[i];
-    }
-    return res;
-}
-
+// Extracts the FairPlay-wrapped key (ekey), its IV (eiv) and the mirroring stream connection ID
+// from a SETUP body. The connection ID is either top-level or inside a type-110 (video) stream entry.
 bool parseBplistSetup(const std::vector<uint8_t>& data,
                       std::vector<uint8_t>& outEkey,
                       std::vector<uint8_t>& outEiv,
                       uint64_t& outStreamConnectionId) {
-    if (data.size() < 32) return false;
-    if (std::memcmp(data.data(), "bplist00", 8) != 0) return false;
+    BplistValue root;
+    if (!parseBinaryPlist(data, root) || !root.isDict()) return false;
 
-    const uint8_t* trailer = data.data() + data.size() - 32;
-    uint8_t offsetIntSize = trailer[6];
-    uint8_t objectRefSize = trailer[7];
-    uint64_t numObjects = readBigEndianUInt(trailer + 8, 8);
-    uint64_t topObject = readBigEndianUInt(trailer + 16, 8);
-    uint64_t offsetTableOffset = readBigEndianUInt(trailer + 24, 8);
+    if (const BplistValue* ekey = root.find("ekey"); ekey && ekey->type == BplistValue::Type::Data) {
+        outEkey = ekey->dataVal;
+    }
+    if (const BplistValue* eiv = root.find("eiv"); eiv && eiv->type == BplistValue::Type::Data) {
+        outEiv = eiv->dataVal;
+    }
+    outStreamConnectionId = root.intFor("streamConnectionID", outStreamConnectionId);
 
-    if (offsetIntSize == 0 || objectRefSize == 0 || numObjects == 0) return false;
-    if (offsetTableOffset + numObjects * offsetIntSize > data.size()) return false;
-
-    auto getOffset = [&](size_t idx) -> uint64_t {
-        if (idx >= numObjects) return 0;
-        return readBigEndianUInt(data.data() + offsetTableOffset + idx * offsetIntSize, offsetIntSize);
-    };
-
-    struct ParsedVal {
-        enum Type { NONE, INT, STRING, DATA, ARRAY, DICT } type = NONE;
-        uint64_t intVal = 0;
-        std::string strVal;
-        std::vector<uint8_t> dataVal;
-        std::vector<size_t> refVals;
-        std::vector<std::pair<size_t, size_t>> dictRefs;
-    };
-
-    std::function<ParsedVal(size_t)> parseObj = [&](size_t idx) -> ParsedVal {
-        ParsedVal res;
-        uint64_t off = getOffset(idx);
-        if (off >= data.size()) return res;
-
-        uint8_t marker = data[off];
-        uint8_t objType = marker & 0xF0;
-        uint8_t info = marker & 0x0F;
-        off++;
-
-        if (objType == 0x10) { // Integer
-            size_t sz = 1 << info;
-            if (off + sz <= data.size()) {
-                res.type = ParsedVal::INT;
-                res.intVal = readBigEndianUInt(data.data() + off, sz);
-            }
-        } else if (objType == 0x40 || objType == 0x50) { // Data or ASCII String
-            uint64_t length = info;
-            if (info == 0x0F) {
-                if (off < data.size()) {
-                    uint8_t lenMarker = data[off++];
-                    size_t lenSz = 1 << (lenMarker & 0x0F);
-                    if (off + lenSz <= data.size()) {
-                        length = readBigEndianUInt(data.data() + off, lenSz);
-                        off += lenSz;
-                    }
-                }
-            }
-            if (off + length <= data.size()) {
-                if (objType == 0x50) {
-                    res.type = ParsedVal::STRING;
-                    res.strVal.assign(reinterpret_cast<const char*>(data.data() + off), length);
-                } else {
-                    res.type = ParsedVal::DATA;
-                    res.dataVal.assign(data.data() + off, data.data() + off + length);
-                }
-            }
-        } else if (objType == 0xA0) { // Array
-            uint64_t length = info;
-            if (info == 0x0F) {
-                if (off < data.size()) {
-                    uint8_t lenMarker = data[off++];
-                    size_t lenSz = 1 << (lenMarker & 0x0F);
-                    if (off + lenSz <= data.size()) {
-                        length = readBigEndianUInt(data.data() + off, lenSz);
-                        off += lenSz;
-                    }
-                }
-            }
-            res.type = ParsedVal::ARRAY;
-            for (uint64_t i = 0; i < length && off + objectRefSize <= data.size(); ++i) {
-                res.refVals.push_back(readBigEndianUInt(data.data() + off, objectRefSize));
-                off += objectRefSize;
-            }
-        } else if (objType == 0xD0) { // Dict
-            uint64_t length = info;
-            if (info == 0x0F) {
-                if (off < data.size()) {
-                    uint8_t lenMarker = data[off++];
-                    size_t lenSz = 1 << (lenMarker & 0x0F);
-                    if (off + lenSz <= data.size()) {
-                        length = readBigEndianUInt(data.data() + off, lenSz);
-                        off += lenSz;
-                    }
-                }
-            }
-            res.type = ParsedVal::DICT;
-            std::vector<size_t> krefs, vrefs;
-            for (uint64_t i = 0; i < length && off + objectRefSize <= data.size(); ++i) {
-                krefs.push_back(readBigEndianUInt(data.data() + off, objectRefSize));
-                off += objectRefSize;
-            }
-            for (uint64_t i = 0; i < length && off + objectRefSize <= data.size(); ++i) {
-                vrefs.push_back(readBigEndianUInt(data.data() + off, objectRefSize));
-                off += objectRefSize;
-            }
-            for (size_t i = 0; i < krefs.size() && i < vrefs.size(); ++i) {
-                res.dictRefs.emplace_back(krefs[i], vrefs[i]);
-            }
-        }
-        return res;
-    };
-
-    ParsedVal top = parseObj(topObject);
-    if (top.type != ParsedVal::DICT) return false;
-
-    for (const auto& kv : top.dictRefs) {
-        ParsedVal k = parseObj(kv.first);
-        if (k.type == ParsedVal::STRING) {
-            if (k.strVal == "ekey") {
-                ParsedVal v = parseObj(kv.second);
-                if (v.type == ParsedVal::DATA) outEkey = v.dataVal;
-            } else if (k.strVal == "eiv") {
-                ParsedVal v = parseObj(kv.second);
-                if (v.type == ParsedVal::DATA) outEiv = v.dataVal;
-            } else if (k.strVal == "streamConnectionID") {
-                ParsedVal v = parseObj(kv.second);
-                if (v.type == ParsedVal::INT) {
-                    outStreamConnectionId = v.intVal;
-                }
-            } else if (k.strVal == "streams") {
-                ParsedVal v = parseObj(kv.second);
-                if (v.type == ParsedVal::ARRAY) {
-                    for (size_t streamRef : v.refVals) {
-                        ParsedVal streamObj = parseObj(streamRef);
-                        if (streamObj.type == ParsedVal::DICT) {
-                            uint64_t streamType = 0;
-                            uint64_t streamConnId = 0;
-                            for (const auto& skv : streamObj.dictRefs) {
-                                ParsedVal sk = parseObj(skv.first);
-                                if (sk.type == ParsedVal::STRING) {
-                                    if (sk.strVal == "type") {
-                                        ParsedVal sv = parseObj(skv.second);
-                                        if (sv.type == ParsedVal::INT) streamType = sv.intVal;
-                                    } else if (sk.strVal == "streamConnectionID") {
-                                        ParsedVal sv = parseObj(skv.second);
-                                        if (sv.type == ParsedVal::INT) streamConnId = sv.intVal;
-                                    }
-                                }
-                            }
-                            // Type 110 is Video Screen Mirroring. Only type 110 uses AES-CTR video decryption!
-                            if (streamType == 110 && streamConnId != 0) {
-                                outStreamConnectionId = streamConnId;
-                            }
-                        }
-                    }
-                }
+    if (const BplistValue* streams = root.find("streams"); streams && streams->isArray()) {
+        for (const BplistValue& stream : streams->arrayVal) {
+            // Type 110 is Video Screen Mirroring. Only type 110 uses AES-CTR video decryption!
+            uint64_t streamConnId = stream.intFor("streamConnectionID", 0);
+            if (stream.intFor("type", 0) == 110 && streamConnId != 0) {
+                outStreamConnectionId = streamConnId;
             }
         }
     }
@@ -445,12 +351,11 @@ bool AirPlayCrypto::hasVideoKey() const {
     return hasVideoKey_;
 }
 
-bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& outStreamConnectionId) {
+bool AirPlayCrypto::handleSetup(uint64_t connectionId, const std::vector<uint8_t>& reqBody,
+                                uint64_t& outStreamConnectionId) {
     std::lock_guard<std::mutex> lock(cryptoMutex_);
     LOGI("Processing SETUP request (body size: %zu)", reqBody.size());
-    if (reqBody.size() > 0 && reqBody.size() <= 1024) {
-        LOGI("SETUP reqBody hex: %s", hexEncode(reqBody.data(), reqBody.size()).c_str());
-    }
+    Handshake& hs = handshakeLocked(connectionId);
 
     std::vector<uint8_t> ekey;
     std::vector<uint8_t> eiv;
@@ -479,10 +384,10 @@ bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& o
         }
     }
 
-    if (ekey.size() == 72 && fpKeyMsg_.size() >= 164) {
+    if (ekey.size() == 72 && hs.fpKeyMsg.size() >= 164) {
         LOGI("Found 72-byte ekey in SETUP and valid FairPlay handshake! Decrypting session AES key...");
         uint8_t rawAesKey[16] = {0};
-        playfair_decrypt(fpKeyMsg_.data(), ekey.data(), rawAesKey);
+        playfair_decrypt(hs.fpKeyMsg.data(), ekey.data(), rawAesKey);
 
         // Audio/session AES key derivation matching UxPlay:
         // If pairing ecdh_secret exists (bit 27 ON):
@@ -490,11 +395,11 @@ bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& o
         // Else (legacy pairing disabled / bit 27 OFF):
         //   aeskey = rawAesKey (16 bytes, unhashed!)
         uint8_t finalAesKey[16] = {0};
-        if (sharedSecret_.size() == 32) {
+        if (hs.sharedSecret.size() == 32) {
             LOGI("Hashing FairPlay rawAesKey with Curve25519 sharedSecret (32 bytes)...");
             uint8_t eaesMat[48] = {0};
             std::memcpy(eaesMat, rawAesKey, 16);
-            std::memcpy(eaesMat + 16, sharedSecret_.data(), 32);
+            std::memcpy(eaesMat + 16, hs.sharedSecret.data(), 32);
             uint8_t eaesHash[64] = {0};
             crypto_hash(eaesHash, eaesMat, 48);
             std::memcpy(finalAesKey, eaesHash, 16);
@@ -507,9 +412,9 @@ bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& o
         hasSessionAesKey_ = true;
         if (!eiv.empty() && eiv.size() >= 16) {
             sessionAesIv_.assign(eiv.begin(), eiv.begin() + 16);
-            LOGI("Saved session AES IV: %s", hexEncode(sessionAesIv_.data(), 16).c_str());
+            LOGI("Saved session AES IV (16 bytes).");
         }
-        LOGI("Saved session AES key: %s", hexEncode(sessionAesKey_.data(), 16).c_str());
+        LOGI("Saved session AES key (16 bytes).");
     }
 
     if (parsedId == 0) {
@@ -559,9 +464,7 @@ bool AirPlayCrypto::handleSetup(const std::vector<uint8_t>& reqBody, uint64_t& o
         nextDecryptCount_ = 0;
         std::memset(og_, 0, sizeof(og_));
 
-        LOGI("Video AES key established: %s, IV: %s, streamConnectionID: %llu",
-             hexEncode(videoAesKey_.data(), 16).c_str(),
-             hexEncode(videoAesIv_.data(), 16).c_str(),
+        LOGI("Video AES key established for streamConnectionID: %llu",
              (unsigned long long)streamConnectionId_);
         return true;
     }
@@ -625,7 +528,6 @@ bool AirPlayCrypto::decryptVideoPayload(uint8_t* payload, size_t length) {
 
 void AirPlayCrypto::resetSessionCrypto() {
     std::lock_guard<std::mutex> lock(cryptoMutex_);
-    fpKeyMsg_.clear();
     sessionAesKey_.clear();
     sessionAesIv_.clear();
     hasSessionAesKey_ = false;
@@ -640,6 +542,20 @@ void AirPlayCrypto::resetSessionCrypto() {
     nextDecryptCount_ = 0;
     std::memset(og_, 0, sizeof(og_));
     LOGI("Session crypto reset.");
+}
+
+void AirPlayCrypto::resetVideoCipher() {
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
+    streamConnectionId_ = 0;
+    videoAesKey_.clear();
+    videoAesIv_.clear();
+    hasVideoKey_ = false;
+    if (videoAesCtx_) {
+        free(videoAesCtx_);
+        videoAesCtx_ = nullptr;
+    }
+    nextDecryptCount_ = 0;
+    std::memset(og_, 0, sizeof(og_));
 }
 
 bool AirPlayCrypto::hasAudioKey() const {
