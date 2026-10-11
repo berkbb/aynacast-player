@@ -410,6 +410,10 @@ static void entropy_rice_decode(alac_file* alac,
             // got blockSize 0s
             if (blockSize > 0)
             {
+                /* A corrupt stream can encode a run longer than the remaining frame; clamp it so the
+                 * memset stays inside outputBuffer. */
+                if (blockSize > outputSize - outputCount - 1)
+                    blockSize = outputSize - outputCount - 1;
                 memset(&outputBuffer[outputCount + 1], 0, blockSize * sizeof(*outputBuffer));
                 outputCount += blockSize;
             }
@@ -466,11 +470,12 @@ static void predictor_decompress_fir_adapt(int32_t *error_buffer,
         return;
     }
 
-    /* read warm-up samples */
+    /* read warm-up samples (bounded by the frame: a corrupt predictor_coef_num of up to 31
+     * must not write past a small samples-per-frame buffer) */
     if (predictor_coef_num > 0)
     {
         int i;
-        for (i = 0; i < predictor_coef_num; i++)
+        for (i = 0; i < predictor_coef_num && i + 1 < output_size; i++)
         {
             int32_t val;
 
@@ -750,10 +755,22 @@ void alac_decode_frame(alac_file *alac,
             /* now read the number of samples,
              * as a 32bit integer */
             outputsamples = readbits(alac, 32);
+            /* Reject frames that claim more samples than the configured buffers can hold
+             * (corrupt or non-ALAC input would otherwise overflow the output buffer). */
+            if ((uint32_t)outputsamples > alac->setinfo_max_samples_per_frame)
+            {
+                *outputsize = 0;
+                return;
+            }
             *outputsize = outputsamples * alac->bytespersample;
         }
 
         readsamplesize = alac->setinfo_sample_size - (uncompressed_bytes * 8);
+        if (readsamplesize <= 0 || readsamplesize > 32)
+        {
+            *outputsize = 0;
+            return;
+        }
 
         if (!isnotcompressed)
         { /* so it is compressed */
@@ -927,10 +944,22 @@ void alac_decode_frame(alac_file *alac,
             /* now read the number of samples,
              * as a 32bit integer */
             outputsamples = readbits(alac, 32);
+            /* Reject frames that claim more samples than the configured buffers can hold
+             * (corrupt or non-ALAC input would otherwise overflow the output buffer). */
+            if ((uint32_t)outputsamples > alac->setinfo_max_samples_per_frame)
+            {
+                *outputsize = 0;
+                return;
+            }
             *outputsize = outputsamples * alac->bytespersample;
         }
 
         readsamplesize = alac->setinfo_sample_size - (uncompressed_bytes * 8) + 1;
+        if (readsamplesize <= 0 || readsamplesize > 32)
+        {
+            *outputsize = 0;
+            return;
+        }
 
         if (!isnotcompressed)
         { /* compressed */
@@ -1120,6 +1149,10 @@ void alac_decode_frame(alac_file *alac,
 
         break;
     }
+    default:
+        /* Corrupt frame (or a key mismatch): output nothing rather than the previous frame's PCM. */
+        *outputsize = 0;
+        break;
     }
 }
 
