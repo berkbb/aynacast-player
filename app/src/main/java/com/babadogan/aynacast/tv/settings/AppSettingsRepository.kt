@@ -2,6 +2,7 @@ package com.babadogan.aynacast.tv.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.babadogan.aynacast.tv.model.AppLanguage
 import com.babadogan.aynacast.tv.model.AppThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,10 +12,16 @@ import kotlinx.coroutines.flow.asStateFlow
 data class AppSettings(
     val language: AppLanguage = AppLanguage.DEFAULT,
     val themeMode: AppThemeMode = AppThemeMode.DEFAULT,
-    val keepAliveInBackground: Boolean = DEFAULT_KEEP_ALIVE
+    val keepAliveInBackground: Boolean = DEFAULT_KEEP_ALIVE,
+    val avSyncEnabled: Boolean = DEFAULT_AV_SYNC,
+    val pinRequired: Boolean = DEFAULT_PIN_REQUIRED
 ) {
     companion object {
         const val DEFAULT_KEEP_ALIVE = true
+        // UxPlay recommends no timestamp sync for hardware-decoding receivers and macOS mirroring.
+        const val DEFAULT_AV_SYNC = false
+        // Opt-in like UxPlay "-pin": a broken pairing would otherwise block every connection.
+        const val DEFAULT_PIN_REQUIRED = false
     }
 }
 
@@ -25,6 +32,8 @@ class AppSettingsRepository(private val context: Context) {
         private const val KEY_LANGUAGE = "app_language"
         private const val KEY_THEME = "app_theme_mode"
         private const val KEY_KEEP_ALIVE = "app_keep_alive_background"
+        private const val KEY_AV_SYNC = "app_av_sync_timestamps"
+        private const val KEY_PIN_REQUIRED = "app_pin_required"
 
         @Volatile
         private var instance: AppSettingsRepository? = null
@@ -45,26 +54,40 @@ class AppSettingsRepository(private val context: Context) {
         val langCode = prefs.getString(KEY_LANGUAGE, AppLanguage.DEFAULT.code)
         val themeStr = prefs.getString(KEY_THEME, AppThemeMode.DEFAULT.name)
         val keepAlive = prefs.getBoolean(KEY_KEEP_ALIVE, AppSettings.DEFAULT_KEEP_ALIVE)
+        val avSync = prefs.getBoolean(KEY_AV_SYNC, AppSettings.DEFAULT_AV_SYNC)
+        val pinRequired = prefs.getBoolean(KEY_PIN_REQUIRED, AppSettings.DEFAULT_PIN_REQUIRED)
 
         return AppSettings(
             language = AppLanguage.fromCode(langCode),
             themeMode = AppThemeMode.fromString(themeStr),
-            keepAliveInBackground = keepAlive
+            keepAliveInBackground = keepAlive,
+            avSyncEnabled = avSync,
+            pinRequired = pinRequired
         )
     }
 
     fun setLanguage(language: AppLanguage) {
-        prefs.edit().putString(KEY_LANGUAGE, language.code).apply()
+        prefs.edit { putString(KEY_LANGUAGE, language.code) }
         _settings.value = _settings.value.copy(language = language)
     }
 
     fun setThemeMode(themeMode: AppThemeMode) {
-        prefs.edit().putString(KEY_THEME, themeMode.name).apply()
+        prefs.edit { putString(KEY_THEME, themeMode.name) }
         _settings.value = _settings.value.copy(themeMode = themeMode)
     }
 
     fun setKeepAliveInBackground(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_KEEP_ALIVE, enabled).apply()
+        prefs.edit { putBoolean(KEY_KEEP_ALIVE, enabled) }
         _settings.value = _settings.value.copy(keepAliveInBackground = enabled)
+    }
+
+    fun setPinRequired(required: Boolean) {
+        prefs.edit { putBoolean(KEY_PIN_REQUIRED, required) }
+        _settings.value = _settings.value.copy(pinRequired = required)
+    }
+
+    fun setAvSyncEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_AV_SYNC, enabled) }
+        _settings.value = _settings.value.copy(avSyncEnabled = enabled)
     }
 }

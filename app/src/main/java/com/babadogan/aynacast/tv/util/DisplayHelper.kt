@@ -1,9 +1,9 @@
 package com.babadogan.aynacast.tv.util
 
 import android.content.Context
-import android.os.Build
 import android.util.Log
-import android.view.WindowManager
+import android.hardware.display.DisplayManager
+import android.view.Display
 
 data class TvDisplayInfo(
     val width: Int,
@@ -29,13 +29,9 @@ object DisplayHelper {
      * RefreshRate is always taken from the Android display API (not from sys.display-size).
      */
     fun getTvDisplayInfo(context: Context): TvDisplayInfo {
-        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching { context.display }.getOrNull() ?: windowManager?.defaultDisplay
-        } else {
-            @Suppress("DEPRECATION")
-            windowManager?.defaultDisplay
-        }
+        // DisplayManager works from any context (services have no associated display).
+        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+            ?.getDisplay(Display.DEFAULT_DISPLAY)
 
         var width = 0
         var height = 0
@@ -61,7 +57,7 @@ object DisplayHelper {
         }
 
         // --- Priority 2 & 3: Display.Mode API ---
-        if (display != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (display != null) {
             try {
                 // Max supported physical mode (may reveal 4K even if active mode is 1080p)
                 val supported = display.supportedModes

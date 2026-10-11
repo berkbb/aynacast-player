@@ -47,10 +47,18 @@ import kotlinx.coroutines.delay
 import com.babadogan.aynacast.tv.settings.AppSettingsRepository
 import com.babadogan.aynacast.tv.ui.localization.AirPlayStrings
 import androidx.activity.addCallback
+import android.content.Context
 import android.content.Intent
 import com.babadogan.aynacast.tv.service.AirPlayDaemonService
 
 class AirPlayPlayerActivity : ComponentActivity() {
+
+    companion object {
+        fun createIntent(context: Context): Intent =
+            Intent(context, AirPlayPlayerActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,14 +75,14 @@ class AirPlayPlayerActivity : ComponentActivity() {
 
         setContent {
             val appSettings by settingsRepo.settings.collectAsState()
-            val isStreaming by AirPlaySessionManager.isStreaming.collectAsState()
+            val isVideoActive by AirPlaySessionManager.isVideoActive.collectAsState()
             val metadata by AirPlaySessionManager.clientMetadata.collectAsState()
             val currentFps by AirPlaySessionManager.currentFps.collectAsState()
 
             AirPlayTvTheme(themeMode = appSettings.themeMode) {
-                // Auto-close when iPhone terminates session (TEARDOWN)
-                LaunchedEffect(isStreaming) {
-                    if (!isStreaming) {
+                // Auto-close when the sender stops mirroring (TEARDOWN or dropped connection)
+                LaunchedEffect(isVideoActive) {
+                    if (!isVideoActive) {
                         finish()
                     }
                 }
@@ -91,9 +99,11 @@ class AirPlayPlayerActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        VideoDecoderEngine.unbindSurface()
-        super.onDestroy()
+    override fun onResume() {
+        super.onResume()
+        AirPlayDaemonService.cancelStreamNotification(this)
+        // Mirroring may have ended while this activity was being (re)created.
+        if (!AirPlaySessionManager.isVideoActive.value) finish()
     }
 }
 
@@ -142,7 +152,8 @@ fun AirPlayPlayerScreen(
                         override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
 
                         override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            VideoDecoderEngine.unbindSurface()
+                            // Blocks until the decoder stops rendering into this surface.
+                            VideoDecoderEngine.unbindSurface(holder.surface)
                         }
                     })
                 }

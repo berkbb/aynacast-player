@@ -1,7 +1,11 @@
 package com.babadogan.aynacast.tv.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -54,8 +58,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.babadogan.aynacast.tv.model.AppLanguage
 import com.babadogan.aynacast.tv.model.AppThemeMode
+import com.babadogan.aynacast.tv.pairing.PinPairingManager
 import com.babadogan.aynacast.tv.service.AirPlayDaemonService
 import com.babadogan.aynacast.tv.session.AirPlaySessionManager
 import com.babadogan.aynacast.tv.session.ConnectionStatus
@@ -64,10 +70,15 @@ import com.babadogan.aynacast.tv.ui.localization.AirPlayStrings
 import com.babadogan.aynacast.tv.ui.theme.AirPlayTvTheme
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentBlue
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentGreen
+import com.babadogan.aynacast.tv.ui.theme.AppleAccentOrange
 import com.babadogan.aynacast.tv.util.DeviceIdentityHelper
 import com.babadogan.aynacast.tv.util.requestNotificationPermissionOnce
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class AirPlaySettingsActivity : ComponentActivity() {
+
+    private val overlayPermissionGranted = MutableStateFlow(true)
+    private val overlaySettingsUnavailable = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,22 +90,40 @@ class AirPlaySettingsActivity : ComponentActivity() {
 
         val settingsRepo = AppSettingsRepository.getInstance(this)
         val deviceName = DeviceIdentityHelper.getAirPlayDeviceName(this)
+        val appVersion = readAppVersion()
+        PinPairingManager.init(this)
 
         setContent {
             val appSettings by settingsRepo.settings.collectAsState()
             val status by AirPlaySessionManager.connectionStatus.collectAsState()
             val metadata by AirPlaySessionManager.clientMetadata.collectAsState()
+            val isServiceRunning by AirPlaySessionManager.isServiceRunning.collectAsState()
+            val isVideoActive by AirPlaySessionManager.isVideoActive.collectAsState()
+            val pairedDevices by PinPairingManager.pairedDevices.collectAsState()
+            val canDrawOverlays by overlayPermissionGranted.collectAsState()
+            val overlayUnavailable by overlaySettingsUnavailable.collectAsState()
 
             AirPlayTvTheme(themeMode = appSettings.themeMode) {
                 AirPlaySettingsMainScreen(
                     status = status,
+                    isServiceRunning = isServiceRunning,
+                    isVideoActive = isVideoActive,
                     deviceName = deviceName,
                     clientName = metadata.deviceName,
+                    appVersion = appVersion,
                     currentLanguage = appSettings.language,
                     currentTheme = appSettings.themeMode,
                     keepAliveInBackground = appSettings.keepAliveInBackground,
+                    avSyncEnabled = appSettings.avSyncEnabled,
+                    pinRequired = appSettings.pinRequired,
+                    pairedDeviceCount = pairedDevices.size,
+                    showOverlayPermission = !canDrawOverlays,
+                    overlaySettingsUnavailable = overlayUnavailable,
                     onLanguageChanged = { settingsRepo.setLanguage(it) },
                     onThemeChanged = { settingsRepo.setThemeMode(it) },
+                    onAvSyncChanged = { settingsRepo.setAvSyncEnabled(it) },
+                    onPinRequiredChanged = { settingsRepo.setPinRequired(it) },
+                    onForgetPairedDevices = { PinPairingManager.forgetAllDevices() },
                     onKeepAliveChanged = { enabled ->
                         settingsRepo.setKeepAliveInBackground(enabled)
                         if (enabled) {
@@ -104,34 +133,92 @@ class AirPlaySettingsActivity : ComponentActivity() {
                     onRestartService = {
                         stopService(serviceIntent)
                         ContextCompat.startForegroundService(this, serviceIntent)
+                    },
+                    onShowMirroring = { startActivity(AirPlayPlayerActivity.createIntent(this)) },
+                    onGrantOverlayPermission = {
+                        overlaySettingsUnavailable.value = !openOverlayPermissionSettings()
                     }
                 )
             }
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        overlayPermissionGranted.value = hasOverlayPermission()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        // Configuration changes also destroy the activity; only a real exit may stop the service.
+        if (!isFinishing) return
         val settings = AppSettingsRepository.getInstance(this).settings.value
         if (!settings.keepAliveInBackground && !AirPlaySessionManager.isStreaming.value) {
             val serviceIntent = Intent(this, AirPlayDaemonService::class.java)
             stopService(serviceIntent)
         }
     }
+
+    /** Android 10+ only lets background apps open activities when they may draw over other apps. */
+    private fun hasOverlayPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || Settings.canDrawOverlays(this)
+
+    private fun openOverlayPermissionSettings(): Boolean {
+        val packageUri = "package:$packageName".toUri()
+        val candidates = listOf(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, packageUri),
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri)
+        )
+        for (intent in candidates) {
+            try {
+                startActivity(intent)
+                return true
+            } catch (_: ActivityNotFoundException) {
+                // Many Android TV builds omit some settings screens; try the next one.
+            }
+        }
+        return false
+    }
+
+    private fun readAppVersion(): String = try {
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0)
+        }
+        info.versionName.orEmpty()
+    } catch (_: PackageManager.NameNotFoundException) {
+        ""
+    }
 }
 
 @Composable
 fun AirPlaySettingsMainScreen(
     status: ConnectionStatus,
+    isServiceRunning: Boolean,
+    isVideoActive: Boolean,
     deviceName: String,
     clientName: String,
+    appVersion: String,
     currentLanguage: AppLanguage,
     currentTheme: AppThemeMode,
     keepAliveInBackground: Boolean,
+    avSyncEnabled: Boolean,
+    pinRequired: Boolean,
+    pairedDeviceCount: Int,
+    showOverlayPermission: Boolean,
+    overlaySettingsUnavailable: Boolean,
     onLanguageChanged: (AppLanguage) -> Unit,
     onThemeChanged: (AppThemeMode) -> Unit,
+    onAvSyncChanged: (Boolean) -> Unit,
+    onPinRequiredChanged: (Boolean) -> Unit,
+    onForgetPairedDevices: () -> Unit,
     onKeepAliveChanged: (Boolean) -> Unit,
-    onRestartService: () -> Unit
+    onRestartService: () -> Unit,
+    onShowMirroring: () -> Unit,
+    onGrantOverlayPermission: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Settings, 1: About
 
@@ -203,19 +290,32 @@ fun AirPlaySettingsMainScreen(
             if (selectedTab == 0) {
                 SettingsTabContent(
                     status = status,
+                    isServiceRunning = isServiceRunning,
+                    isVideoActive = isVideoActive,
                     deviceName = deviceName,
                     clientName = clientName,
                     currentLanguage = currentLanguage,
                     currentTheme = currentTheme,
                     keepAliveInBackground = keepAliveInBackground,
+                    avSyncEnabled = avSyncEnabled,
+                    pinRequired = pinRequired,
+                    pairedDeviceCount = pairedDeviceCount,
+                    showOverlayPermission = showOverlayPermission,
+                    overlaySettingsUnavailable = overlaySettingsUnavailable,
                     onLanguageChanged = onLanguageChanged,
                     onThemeChanged = onThemeChanged,
+                    onAvSyncChanged = onAvSyncChanged,
+                    onPinRequiredChanged = onPinRequiredChanged,
+                    onForgetPairedDevices = onForgetPairedDevices,
                     onKeepAliveChanged = onKeepAliveChanged,
-                    onRestartService = onRestartService
+                    onRestartService = onRestartService,
+                    onShowMirroring = onShowMirroring,
+                    onGrantOverlayPermission = onGrantOverlayPermission
                 )
             } else {
                 AboutTabContent(
-                    currentLanguage = currentLanguage
+                    currentLanguage = currentLanguage,
+                    appVersion = appVersion
                 )
             }
         }
@@ -225,15 +325,27 @@ fun AirPlaySettingsMainScreen(
 @Composable
 fun SettingsTabContent(
     status: ConnectionStatus,
+    isServiceRunning: Boolean,
+    isVideoActive: Boolean,
     deviceName: String,
     clientName: String,
     currentLanguage: AppLanguage,
     currentTheme: AppThemeMode,
     keepAliveInBackground: Boolean,
+    avSyncEnabled: Boolean,
+    pinRequired: Boolean,
+    pairedDeviceCount: Int,
+    showOverlayPermission: Boolean,
+    overlaySettingsUnavailable: Boolean,
     onLanguageChanged: (AppLanguage) -> Unit,
     onThemeChanged: (AppThemeMode) -> Unit,
+    onAvSyncChanged: (Boolean) -> Unit,
+    onPinRequiredChanged: (Boolean) -> Unit,
+    onForgetPairedDevices: () -> Unit,
     onKeepAliveChanged: (Boolean) -> Unit,
-    onRestartService: () -> Unit
+    onRestartService: () -> Unit,
+    onShowMirroring: () -> Unit,
+    onGrantOverlayPermission: () -> Unit
 ) {
     val scrollState = rememberScrollState()
 
@@ -249,16 +361,20 @@ fun SettingsTabContent(
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // Status Card
-            TvCard(modifier = Modifier.weight(1f)) {
+            TvCard(modifier = Modifier.weight(1f), focusable = !isVideoActive) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
                             .size(12.dp)
-                            .background(AppleAccentGreen, CircleShape)
+                            .background(if (isServiceRunning) AppleAccentGreen else AppleAccentOrange, CircleShape)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = AirPlayStrings.serviceStatusActive(currentLanguage),
+                        text = if (isServiceRunning) {
+                            AirPlayStrings.serviceStatusActive(currentLanguage)
+                        } else {
+                            AirPlayStrings.serviceStatusStopped(currentLanguage)
+                        },
                         color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 18.sp,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
@@ -266,16 +382,25 @@ fun SettingsTabContent(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = when (status) {
-                        ConnectionStatus.IDLE -> AirPlayStrings.statusIdle(deviceName, currentLanguage)
-                        ConnectionStatus.WAITING_FOR_STREAM -> AirPlayStrings.statusConnecting(clientName, currentLanguage)
-                        ConnectionStatus.STREAMING -> AirPlayStrings.statusStreaming(clientName, currentLanguage)
-                        ConnectionStatus.DISCONNECTED -> AirPlayStrings.statusDisconnected(currentLanguage)
+                    text = when {
+                        !isServiceRunning -> AirPlayStrings.serviceStatusStarting(currentLanguage)
+                        status == ConnectionStatus.IDLE -> AirPlayStrings.statusIdle(deviceName, currentLanguage)
+                        status == ConnectionStatus.WAITING_FOR_STREAM -> AirPlayStrings.statusConnecting(clientName, currentLanguage)
+                        status == ConnectionStatus.STREAMING -> AirPlayStrings.statusStreaming(clientName, currentLanguage)
+                        else -> AirPlayStrings.statusDisconnected(currentLanguage)
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
+                if (isVideoActive) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    TvChoiceChip(
+                        text = AirPlayStrings.showMirroring(currentLanguage),
+                        isSelected = true,
+                        onClick = onShowMirroring
+                    )
+                }
             }
 
             // Instructions Card
@@ -292,6 +417,37 @@ fun SettingsTabContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 14.sp,
                     lineHeight = 22.sp
+                )
+            }
+        }
+
+        // Android 10+ background-launch permission
+        if (showOverlayPermission) {
+            TvCard(
+                modifier = Modifier.fillMaxWidth(),
+                borderColor = AppleAccentOrange.copy(alpha = 0.6f),
+                focusable = false
+            ) {
+                Text(
+                    text = AirPlayStrings.overlayPermissionTitle(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 18.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+                Text(
+                    text = if (overlaySettingsUnavailable) {
+                        AirPlayStrings.overlayPermissionUnavailable(currentLanguage)
+                    } else {
+                        AirPlayStrings.overlayPermissionDesc(currentLanguage)
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                TvChoiceChip(
+                    text = AirPlayStrings.overlayPermissionButton(currentLanguage),
+                    isSelected = false,
+                    onClick = onGrantOverlayPermission
                 )
             }
         }
@@ -348,6 +504,83 @@ fun SettingsTabContent(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // On-screen PIN pairing (UxPlay -pin)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = AirPlayStrings.pinSettingTitle(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 18.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = AirPlayStrings.pinSettingDesc(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvChoiceChip(
+                        text = AirPlayStrings.pinOff(currentLanguage),
+                        isSelected = !pinRequired,
+                        onClick = { onPinRequiredChanged(false) }
+                    )
+                    TvChoiceChip(
+                        text = AirPlayStrings.pinOn(currentLanguage),
+                        isSelected = pinRequired,
+                        onClick = { onPinRequiredChanged(true) }
+                    )
+                    if (pairedDeviceCount > 0) {
+                        TvChoiceChip(
+                            text = AirPlayStrings.pinForgetDevices(pairedDeviceCount, currentLanguage),
+                            isSelected = false,
+                            onClick = onForgetPairedDevices
+                        )
+                    }
+                }
+            }
+        }
+
+        // Audio/video timestamp sync (UxPlay -vsync)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = AirPlayStrings.avSyncTitle(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 18.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = AirPlayStrings.avSyncDesc(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvChoiceChip(
+                        text = AirPlayStrings.avSyncOff(currentLanguage),
+                        isSelected = !avSyncEnabled,
+                        onClick = { onAvSyncChanged(false) }
+                    )
+                    TvChoiceChip(
+                        text = AirPlayStrings.avSyncOn(currentLanguage),
+                        isSelected = avSyncEnabled,
+                        onClick = { onAvSyncChanged(true) }
+                    )
                 }
             }
         }
@@ -445,7 +678,8 @@ fun SettingsTabContent(
 
 @Composable
 fun AboutTabContent(
-    currentLanguage: AppLanguage
+    currentLanguage: AppLanguage,
+    appVersion: String
 ) {
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
@@ -505,7 +739,7 @@ fun AboutTabContent(
                     )
                 }
                 Text(
-                    text = AirPlayStrings.aboutVersion("1.0.0", currentLanguage),
+                    text = AirPlayStrings.aboutVersion(appVersion, currentLanguage),
                     color = AppleAccentBlue,
                     fontSize = 16.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
@@ -601,6 +835,9 @@ fun TvCard(
     modifier: Modifier = Modifier,
     borderColor: Color? = null,
     backgroundColor: Color? = null,
+    // A card holding its own controls must not take focus itself: D-pad focus search only moves
+    // between siblings, so the controls inside a focusable card are unreachable with the arrows.
+    focusable: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -608,8 +845,8 @@ fun TvCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable(),
+            .onFocusChanged { isFocused = it.hasFocus }
+            .then(if (focusable) Modifier.focusable() else Modifier),
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor ?: when {
                 isFocused -> MaterialTheme.colorScheme.surfaceVariant
