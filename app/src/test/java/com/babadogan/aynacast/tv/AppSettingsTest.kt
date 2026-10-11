@@ -51,4 +51,12 @@ class AppSettingsTest {
         val modifiedSettings = defaultSettings.copy(keepAliveInBackground = false)
         assertEquals(false, modifiedSettings.keepAliveInBackground)
     }
+
+    @Test
+    fun testTimestampSyncIsOffByDefault() {
+        // UxPlay recommends "-vsync no" for hardware-decoding receivers and macOS mirroring.
+        assertEquals(false, AppSettings.DEFAULT_AV_SYNC)
+        assertEquals(false, AppSettings().avSyncEnabled)
+        assertEquals(true, AppSettings().copy(avSyncEnabled = true).avSyncEnabled)
+    }
 }

@@ -51,6 +51,36 @@ class AirPlayStringsTest {
             assertTrue(AirPlayStrings.aboutLicenseDesc(lang).isNotBlank())
             assertTrue(AirPlayStrings.aboutDisclaimerTitle(lang).isNotBlank())
             assertTrue(AirPlayStrings.aboutDisclaimerDesc(lang).isNotBlank())
+            assertTrue(AirPlayStrings.showMirroring(lang).isNotBlank())
+            assertTrue(AirPlayStrings.serviceStatusStarting(lang).isNotBlank())
+            assertTrue(AirPlayStrings.overlayPermissionTitle(lang).isNotBlank())
+            assertTrue(AirPlayStrings.overlayPermissionDesc(lang).isNotBlank())
+            assertTrue(AirPlayStrings.overlayPermissionButton(lang).isNotBlank())
+            assertTrue(AirPlayStrings.overlayPermissionUnavailable(lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationServiceChannel(lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationServiceChannelDesc(lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationServiceTitle(lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationServiceText(testDevice, lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationStreamChannel(lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationStreamTitle(testClient, lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationStreamText(lang).isNotBlank())
+            assertTrue(AirPlayStrings.avSyncTitle(lang).isNotBlank())
+            assertTrue(AirPlayStrings.avSyncDesc(lang).isNotBlank())
+            assertTrue(AirPlayStrings.avSyncOff(lang).isNotBlank())
+            assertTrue(AirPlayStrings.avSyncOn(lang).isNotBlank())
+            assertTrue(AirPlayStrings.nowPlayingFrom(testClient, lang).isNotBlank())
+            assertTrue(AirPlayStrings.nowPlayingUnknownTitle(lang).isNotBlank())
+            assertTrue(AirPlayStrings.nowPlayingPaused(lang).isNotBlank())
+            assertTrue(AirPlayStrings.pinTitle(lang).isNotBlank())
+            assertTrue(AirPlayStrings.pinInstructions(lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationPinText("1234", lang).contains("1234"))
+            assertTrue(AirPlayStrings.notificationVideoCastTitle(lang).isNotBlank())
+            assertTrue(AirPlayStrings.notificationVideoCastText(lang).isNotBlank())
+            assertTrue(AirPlayStrings.pinSettingTitle(lang).isNotBlank())
+            assertTrue(AirPlayStrings.pinSettingDesc(lang).isNotBlank())
+            assertTrue(AirPlayStrings.pinOff(lang).isNotBlank())
+            assertTrue(AirPlayStrings.pinOn(lang).isNotBlank())
+            assertTrue(AirPlayStrings.pinForgetDevices(2, lang).isNotBlank())
 
             for (theme in AppThemeMode.entries) {
                 assertTrue(AirPlayStrings.themeName(theme, lang).isNotBlank())
@@ -78,6 +108,18 @@ class AirPlayStringsTest {
         assertNotEquals(AirPlayStrings.keepAliveDisabled(AppLanguage.TR), AirPlayStrings.keepAliveDisabled(AppLanguage.EN))
         assertNotEquals(AirPlayStrings.themeName(AppThemeMode.DARK, AppLanguage.TR), AirPlayStrings.themeName(AppThemeMode.DARK, AppLanguage.EN))
         assertNotEquals(AirPlayStrings.languageName(AppLanguage.TR, AppLanguage.TR), AirPlayStrings.languageName(AppLanguage.TR, AppLanguage.EN))
+        assertNotEquals(AirPlayStrings.showMirroring(AppLanguage.TR), AirPlayStrings.showMirroring(AppLanguage.EN))
+        assertNotEquals(AirPlayStrings.overlayPermissionDesc(AppLanguage.TR), AirPlayStrings.overlayPermissionDesc(AppLanguage.EN))
+        assertNotEquals(AirPlayStrings.notificationServiceTitle(AppLanguage.TR), AirPlayStrings.notificationServiceTitle(AppLanguage.EN))
+    }
+
+    @Test
+    fun testLicenseTextMatchesRepositoryLicense() {
+        // The repository ships under the MIT license (see LICENSE); the About screen must say so.
+        for (lang in AppLanguage.entries) {
+            assertTrue(AirPlayStrings.aboutLicenseDesc(lang).contains("MIT"))
+            assertFalse(AirPlayStrings.aboutLicenseDesc(lang).contains("Apache"))
+        }
     }
 
     @Test
