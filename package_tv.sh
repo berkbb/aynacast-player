@@ -11,7 +11,9 @@ if [[ -z "${JAVA_HOME:-}" ]]; then
 fi
 
 MODE="${1:-release}"
-VERSION="1.0.0"
+# Single source of truth: versionName in app/build.gradle.kts
+VERSION="$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+VERSION="${VERSION:-0.0.0}"
 DIST_DIR="$SCRIPT_DIR/dist"
 
 echo "=========================================================="
