@@ -9,5 +9,23 @@
         <item name="android:windowBackground">#000000</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:keepScreenOn">true</item>
+        <item name="android:windowAnimationStyle">@style/Animation.AirPlayTv.Player</item>
+    </style>
+
+    <!-- Players open over whatever is on the TV (often another app's task), so the task
+         transitions are set as well as the activity ones. -->
+    <style name="Animation.AirPlayTv.Player" parent="android:Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/aynacast_screen_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/aynacast_hold</item>
+        <item name="android:activityCloseEnterAnimation">@anim/aynacast_hold</item>
+        <item name="android:activityCloseExitAnimation">@anim/aynacast_screen_exit</item>
+        <item name="android:taskOpenEnterAnimation">@anim/aynacast_screen_enter</item>
+        <item name="android:taskOpenExitAnimation">@anim/aynacast_hold</item>
+        <item name="android:taskToFrontEnterAnimation">@anim/aynacast_screen_enter</item>
+        <item name="android:taskToFrontExitAnimation">@anim/aynacast_hold</item>
+        <item name="android:taskCloseEnterAnimation">@anim/aynacast_hold</item>
+        <item name="android:taskCloseExitAnimation">@anim/aynacast_screen_exit</item>
+        <item name="android:taskToBackEnterAnimation">@anim/aynacast_hold</item>
+        <item name="android:taskToBackExitAnimation">@anim/aynacast_screen_exit</item>
     </style>
 </resources>

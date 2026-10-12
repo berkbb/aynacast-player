@@ -49,6 +49,14 @@ object AirPlaySessionManager {
     private val _isVideoActive = MutableStateFlow(false)
     val isVideoActive: StateFlow<Boolean> = _isVideoActive.asStateFlow()
 
+    /** True while the sender streams audio (music, or mirroring sound); the session can outlive it. */
+    private val _isAudioActive = MutableStateFlow(false)
+    val isAudioActive: StateFlow<Boolean> = _isAudioActive.asStateFlow()
+
+    fun notifyAudioActive(active: Boolean) {
+        _isAudioActive.value = active
+    }
+
     private val _clientMetadata = MutableStateFlow(ClientMetadata())
     val clientMetadata: StateFlow<ClientMetadata> = _clientMetadata.asStateFlow()
 
@@ -58,6 +66,16 @@ object AirPlaySessionManager {
     /** True while the daemon service is running and its AirPlay server is listening. */
     private val _isServiceRunning = MutableStateFlow(false)
     val isServiceRunning: StateFlow<Boolean> = _isServiceRunning.asStateFlow()
+
+    /** Sender volume as a 0..1 slider position; [changeId] changes with every change. */
+    data class SenderVolume(val level: Float = 1f, val changeId: Long = 0L)
+
+    private val _senderVolume = MutableStateFlow(SenderVolume())
+    val senderVolume: StateFlow<SenderVolume> = _senderVolume.asStateFlow()
+
+    fun notifyVolumeChanged(level: Float) {
+        _senderVolume.update { SenderVolume(level, it.changeId + 1) }
+    }
 
     private val _nowPlaying = MutableStateFlow(NowPlaying())
     val nowPlaying: StateFlow<NowPlaying> = _nowPlaying.asStateFlow()
@@ -118,6 +136,7 @@ object AirPlaySessionManager {
     fun notifyStreamStopped() {
         _isStreaming.value = false
         _isVideoActive.value = false
+        _isAudioActive.value = false
         _currentFps.value = 0
         _nowPlaying.value = NowPlaying()
         _connectionStatus.value = ConnectionStatus.DISCONNECTED

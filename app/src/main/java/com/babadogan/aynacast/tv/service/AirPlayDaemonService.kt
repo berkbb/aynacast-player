@@ -36,6 +36,7 @@ import com.babadogan.aynacast.tv.model.AppLanguage
 import com.babadogan.aynacast.tv.pairing.PinPairingManager
 import com.babadogan.aynacast.tv.session.AirPlaySessionManager
 import com.babadogan.aynacast.tv.pairing.ServerIdentityStore
+import com.babadogan.aynacast.tv.session.ScreenTransitions
 import com.babadogan.aynacast.tv.session.VideoCastSession
 import com.babadogan.aynacast.tv.settings.AppSettingsRepository
 import com.babadogan.aynacast.tv.ui.AirPlayPlayerActivity
@@ -69,6 +70,12 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         private const val STREAM_NOTIFICATION_ID = 1002
         const val PIN_NOTIFICATION_ID = 1003
         const val VIDEO_CAST_NOTIFICATION_ID = 1004
+        private const val ACTION_STOP_STREAMING = "com.babadogan.aynacast.tv.action.STOP_STREAMING"
+
+        /** "Stop streaming" on the TV: disconnects the current sender (mirroring, audio or a cast). */
+        fun stopStreaming(context: Context) {
+            context.startService(Intent(context, AirPlayDaemonService::class.java).setAction(ACTION_STOP_STREAMING))
+        }
         private const val RTSP_PORT = 7000
         private const val NETWORK_REFRESH_DELAY_MS = 2_000L
         private const val UNREGISTER_TIMEOUT_MS = 1_500L
@@ -181,6 +188,14 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Every startForegroundService() call must be answered with startForeground().
         enterForeground()
+        if (intent?.action == ACTION_STOP_STREAMING) {
+            Log.i(TAG, "Streaming stopped on the TV")
+            // A cast ends through its player, which tells the sender and closes the connections.
+            VideoCastSession.stop()
+            // Session teardown joins the audio thread; keep it off the main thread.
+            if (serverStarted) Thread({ AirPlayNativeBridge.disconnectSender() }, "AirPlay-Disconnect").start()
+            return START_STICKY
+        }
         if (!serverStarted) {
             mainHandler.removeCallbacks(startRetryRunnable)
             startRetries = 0
@@ -493,6 +508,7 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
     override fun onClientConnected(deviceName: String, ipAddress: String) {
         Log.i(TAG, "AirPlay client connected: $deviceName ($ipAddress)")
         AirPlaySessionManager.notifyClientConnected(deviceName, ipAddress)
+        PinPairingManager.onClientConnected(deviceName)
     }
 
     override fun onStreamStarted() {
@@ -540,6 +556,7 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
 
     override fun onAudioConfig(codec: Int, sampleRate: Int, channels: Int, samplesPerFrame: Int) {
         AudioPlaybackEngine.configure(codec, sampleRate, channels, samplesPerFrame)
+        AirPlaySessionManager.notifyAudioActive(codec != AirPlayAudioFormat.CODEC_STOPPED)
         if (codec == AirPlayAudioFormat.CODEC_STOPPED) {
             AirPlaySessionManager.clearNowPlaying()
         }
@@ -632,10 +649,17 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
 
     override fun onVolumeChanged(volumeDb: Float) {
         AudioPlaybackEngine.setVolumeDb(volumeDb)
+        AirPlaySessionManager.notifyVolumeChanged(AirPlayAudioFormat.volumeDbToLevel(volumeDb))
     }
 
     private fun launchPlayer() {
         if (!AirPlaySessionManager.isStreaming.value || !AirPlaySessionManager.isVideoActive.value) return
+        // iOS resumes mirroring right after a cast or a PIN pairing ends; let that screen's closing card finish.
+        val waitMs = ScreenTransitions.outroRemainingMs()
+        if (waitMs > 0) {
+            mainHandler.postDelayed({ launchPlayer() }, waitMs)
+            return
+        }
         val clientName = AirPlaySessionManager.clientMetadata.value.deviceName
         launchScreen(
             AirPlayPlayerActivity.createIntent(this),

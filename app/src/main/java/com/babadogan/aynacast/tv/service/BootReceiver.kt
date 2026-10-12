@@ -21,6 +21,10 @@ class BootReceiver : BroadcastReceiver() {
             action == "android.intent.action.QUICKBOOT_POWERON"
         ) {
             val settings = com.babadogan.aynacast.tv.settings.AppSettingsRepository.getInstance(context).settings.value
+            if (!settings.receiverEnabled) {
+                Log.i(TAG, "AirPlay receiver is switched off. Skipping service autostart on boot.")
+                return
+            }
             if (!settings.keepAliveInBackground) {
                 Log.i(TAG, "7/24 background mode is disabled in settings. Skipping service autostart on boot.")
                 return

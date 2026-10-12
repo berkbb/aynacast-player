@@ -14,7 +14,9 @@ data class AppSettings(
     val themeMode: AppThemeMode = AppThemeMode.DEFAULT,
     val keepAliveInBackground: Boolean = DEFAULT_KEEP_ALIVE,
     val avSyncEnabled: Boolean = DEFAULT_AV_SYNC,
-    val pinRequired: Boolean = DEFAULT_PIN_REQUIRED
+    val pinRequired: Boolean = DEFAULT_PIN_REQUIRED,
+    /** Kill switch: false keeps the receiver off (not advertised, no connections) until turned on again. */
+    val receiverEnabled: Boolean = DEFAULT_RECEIVER_ENABLED
 ) {
     companion object {
         const val DEFAULT_KEEP_ALIVE = true
@@ -22,6 +24,7 @@ data class AppSettings(
         const val DEFAULT_AV_SYNC = false
         // Opt-in like UxPlay "-pin": a broken pairing would otherwise block every connection.
         const val DEFAULT_PIN_REQUIRED = false
+        const val DEFAULT_RECEIVER_ENABLED = true
     }
 }
 
@@ -34,6 +37,7 @@ class AppSettingsRepository(private val context: Context) {
         private const val KEY_KEEP_ALIVE = "app_keep_alive_background"
         private const val KEY_AV_SYNC = "app_av_sync_timestamps"
         private const val KEY_PIN_REQUIRED = "app_pin_required"
+        private const val KEY_RECEIVER_ENABLED = "app_receiver_enabled"
 
         @Volatile
         private var instance: AppSettingsRepository? = null
@@ -62,7 +66,8 @@ class AppSettingsRepository(private val context: Context) {
             themeMode = AppThemeMode.fromString(themeStr),
             keepAliveInBackground = keepAlive,
             avSyncEnabled = avSync,
-            pinRequired = pinRequired
+            pinRequired = pinRequired,
+            receiverEnabled = prefs.getBoolean(KEY_RECEIVER_ENABLED, AppSettings.DEFAULT_RECEIVER_ENABLED)
         )
     }
 
@@ -84,6 +89,11 @@ class AppSettingsRepository(private val context: Context) {
     fun setPinRequired(required: Boolean) {
         prefs.edit { putBoolean(KEY_PIN_REQUIRED, required) }
         _settings.value = _settings.value.copy(pinRequired = required)
+    }
+
+    fun setReceiverEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_RECEIVER_ENABLED, enabled) }
+        _settings.value = _settings.value.copy(receiverEnabled = enabled)
     }
 
     fun setAvSyncEnabled(enabled: Boolean) {

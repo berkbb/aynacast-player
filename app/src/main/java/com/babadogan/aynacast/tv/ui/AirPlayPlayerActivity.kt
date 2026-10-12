@@ -8,13 +8,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,8 +36,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.babadogan.aynacast.tv.engine.GlVideoRenderer
 import com.babadogan.aynacast.tv.engine.VideoDecoderEngine
 import com.babadogan.aynacast.tv.session.AirPlaySessionManager
+import com.babadogan.aynacast.tv.session.ScreenTransitions
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.babadogan.aynacast.tv.ui.theme.AirPlayTvTheme
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentGreen
 import com.babadogan.aynacast.tv.ui.theme.AppleGlassOverlay
@@ -53,7 +58,16 @@ import com.babadogan.aynacast.tv.service.AirPlayDaemonService
 
 class AirPlayPlayerActivity : ComponentActivity() {
 
+    // The video surface is a separate layer that ignores the window's close animation, so it is
+    // removed first: otherwise it lingers as a black (often phone-shaped) rectangle.
+    private val leaving = mutableStateOf(false)
+    private val ended = mutableStateOf(false)
+
     companion object {
+        private const val REVEAL_MS = 450
+        private const val OUTRO_FADE_MS = 350
+        private const val OUTRO_MS = 1_300L
+
         fun createIntent(context: Context): Intent =
             Intent(context, AirPlayPlayerActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -65,7 +79,7 @@ class AirPlayPlayerActivity : ComponentActivity() {
 
         // Root Back button on TV remote exits player cleanly
         onBackPressedDispatcher.addCallback(this) {
-            finish()
+            leave()
         }
 
         // Keep TV screen awake during AirPlay streaming
@@ -78,23 +92,46 @@ class AirPlayPlayerActivity : ComponentActivity() {
             val isVideoActive by AirPlaySessionManager.isVideoActive.collectAsState()
             val metadata by AirPlaySessionManager.clientMetadata.collectAsState()
             val currentFps by AirPlaySessionManager.currentFps.collectAsState()
+            val hasShownFrame by VideoDecoderEngine.hasShownFrame.collectAsState()
+            val language = appSettings.language
 
             AirPlayTvTheme(themeMode = appSettings.themeMode) {
-                // Auto-close when the sender stops mirroring (TEARDOWN or dropped connection)
+                // The sender stopped mirroring (TEARDOWN or dropped connection): say so, then close.
                 LaunchedEffect(isVideoActive) {
-                    if (!isVideoActive) {
-                        finish()
-                    }
+                    if (!isVideoActive) showEndedAndClose()
                 }
 
-                AirPlayPlayerScreen(
-                    clientName = metadata.deviceName,
-                    fps = currentFps,
-                    resolution = "${metadata.resolutionWidth}x${metadata.resolutionHeight}",
-                    resolutionWidth = metadata.resolutionWidth,
-                    resolutionHeight = metadata.resolutionHeight,
-                    badgeText = AirPlayStrings.airplayActiveBadge(appSettings.language)
-                )
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                    if (!leaving.value && !ended.value) {
+                        AirPlayPlayerScreen(
+                            clientName = metadata.deviceName,
+                            fps = currentFps,
+                            resolution = "${metadata.resolutionWidth}x${metadata.resolutionHeight}",
+                            resolutionWidth = metadata.resolutionWidth,
+                            resolutionHeight = metadata.resolutionHeight,
+                            badgeText = AirPlayStrings.airplayActiveBadge(language)
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = !hasShownFrame && !ended.value && !leaving.value,
+                        enter = fadeIn(tween(REVEAL_MS)),
+                        exit = fadeOut(tween(REVEAL_MS)) + scaleOut(tween(REVEAL_MS), targetScale = 1.08f)
+                    ) {
+                        StatusCard(
+                            title = AirPlayStrings.mirrorStartingTitle(language),
+                            subtitle = AirPlayStrings.mirrorStartingSubtitle(metadata.deviceName, language),
+                            active = true
+                        )
+                    }
+                    AnimatedVisibility(visible = ended.value, enter = fadeIn(tween(OUTRO_FADE_MS))) {
+                        StatusCard(
+                            title = AirPlayStrings.mirrorEndedTitle(language),
+                            subtitle = metadata.deviceName,
+                            active = false
+                        )
+                    }
+                    VolumeHud()
+                }
             }
         }
     }
@@ -103,7 +140,25 @@ class AirPlayPlayerActivity : ComponentActivity() {
         super.onResume()
         AirPlayDaemonService.cancelStreamNotification(this)
         // Mirroring may have ended while this activity was being (re)created.
-        if (!AirPlaySessionManager.isVideoActive.value) finish()
+        if (!AirPlaySessionManager.isVideoActive.value && !ended.value) finish()
+    }
+
+    /** Back: mirroring continues in the background; the screen just goes away. */
+    private fun leave() {
+        if (leaving.value || ended.value) return
+        leaving.value = true
+        // finish() once the surface is gone, i.e. after the next frame without it.
+        window.decorView.post { finish() }
+    }
+
+    private fun showEndedAndClose() {
+        if (ended.value) return
+        ended.value = true
+        ScreenTransitions.beginOutro(OUTRO_MS)
+        lifecycleScope.launch {
+            delay(OUTRO_MS)
+            finish()
+        }
     }
 }
 
@@ -124,40 +179,17 @@ fun AirPlayPlayerScreen(
         showOverlay = false
     }
 
-    val aspect = if (resolutionWidth > 0 && resolutionHeight > 0) {
-        resolutionWidth.toFloat() / resolutionHeight.toFloat()
-    } else {
-        16f / 9f
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
+        // Full screen; GlVideoRenderer letterboxes the video to its aspect ratio inside it.
         AndroidView(
-            modifier = Modifier
-                .aspectRatio(aspect)
-                .fillMaxSize(),
-            factory = { context ->
-                SurfaceView(context).apply {
-                    setZOrderMediaOverlay(true)
-                    holder.setFixedSize(1920, 1080)
-                    holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            VideoDecoderEngine.bindOutputSurface(holder.surface)
-                        }
-
-                        override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
-
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            // Blocks until the decoder stops rendering into this surface.
-                            VideoDecoderEngine.unbindSurface(holder.surface)
-                        }
-                    })
-                }
-            }
+            modifier = Modifier.fillMaxSize(),
+            factory = { context -> MirrorSurfaceView(context) },
+            update = { view -> view.setVideoSize(resolutionWidth, resolutionHeight) }
         )
 
         // Leanback HUD / On-Screen Display (Top-Right)
@@ -202,5 +234,53 @@ fun AirPlayPlayerScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Full-screen surface for the mirrored video. The decoder renders through [GlVideoRenderer], so
+ * the TV receives finished 16:9 frames; if OpenGL cannot be set up, it renders here directly
+ * (the TV's video plane then places and scales the video itself).
+ */
+private class MirrorSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
+    private var renderer: GlVideoRenderer? = null
+    private var decoderSurface: android.view.Surface? = null
+    private var videoWidth = 0
+    private var videoHeight = 0
+
+    init {
+        // Default Z order (behind the window), so the status cards can cover it.
+        holder.addCallback(this)
+    }
+
+    fun setVideoSize(width: Int, height: Int) {
+        videoWidth = width
+        videoHeight = height
+        renderer?.setVideoSize(width, height)
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        val gl = try {
+            GlVideoRenderer(holder.surface).also { it.setVideoSize(videoWidth, videoHeight) }
+        } catch (e: Exception) {
+            android.util.Log.w("MirrorSurfaceView", "OpenGL rendering unavailable; decoding to the screen directly", e)
+            null
+        }
+        renderer = gl
+        val target = gl?.inputSurface ?: holder.surface
+        decoderSurface = target
+        VideoDecoderEngine.bindOutputSurface(target)
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        renderer?.setOutputSize(width, height)
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        // Blocks until the decoder stops rendering into its surface.
+        decoderSurface?.let { VideoDecoderEngine.unbindSurface(it) }
+        decoderSurface = null
+        renderer?.release()
+        renderer = null
     }
 }

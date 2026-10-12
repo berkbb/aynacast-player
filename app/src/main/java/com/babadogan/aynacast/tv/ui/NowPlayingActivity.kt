@@ -82,11 +82,14 @@ class NowPlayingActivity : ComponentActivity() {
             }
 
             AirPlayTvTheme(themeMode = appSettings.themeMode) {
-                NowPlayingScreen(
-                    nowPlaying = nowPlaying,
-                    clientName = metadata.deviceName,
-                    language = appSettings.language
-                )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    NowPlayingScreen(
+                        nowPlaying = nowPlaying,
+                        clientName = metadata.deviceName,
+                        language = appSettings.language
+                    )
+                    VolumeHud()
+                }
             }
         }
     }

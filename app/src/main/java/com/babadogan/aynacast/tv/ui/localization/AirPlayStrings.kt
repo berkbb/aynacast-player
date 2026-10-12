@@ -65,6 +65,41 @@ object AirPlayStrings {
         AppLanguage.EN -> "Device connected: $clientName. Preparing stream..."
     }
 
+    fun statusPlayingAudio(clientName: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Müzik çalıyor: $clientName"
+        AppLanguage.EN -> "Playing audio from $clientName"
+    }
+
+    fun statusConnectedIdle(clientName: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bağlı, yayın yok: $clientName"
+        AppLanguage.EN -> "Connected, nothing playing: $clientName"
+    }
+
+    fun receiverOffStatus(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay Kapalı"
+        AppLanguage.EN -> "AirPlay Off"
+    }
+
+    fun receiverOffDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "TV Apple cihazlarında görünmüyor ve bağlantı kabul etmiyor."
+        AppLanguage.EN -> "The TV is hidden from Apple devices and accepts no connections."
+    }
+
+    fun stopStreaming(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yayını Durdur"
+        AppLanguage.EN -> "Stop Streaming"
+    }
+
+    fun receiverStop(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay'i Durdur"
+        AppLanguage.EN -> "Stop AirPlay"
+    }
+
+    fun receiverStart(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay'i Başlat"
+        AppLanguage.EN -> "Start AirPlay"
+    }
+
     fun statusStreaming(clientName: String, lang: AppLanguage): String = when (lang) {
         AppLanguage.TR -> "Ekran yansıtılıyor: $clientName"
         AppLanguage.EN -> "Screen mirroring active: $clientName"
@@ -282,6 +317,114 @@ object AirPlayStrings {
         AppLanguage.EN -> "On – Timestamp Sync"
     }
 
+    fun mirrorStartingTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Ekran yansıtma başlıyor"
+        AppLanguage.EN -> "Starting screen mirroring"
+    }
+
+    fun mirrorStartingSubtitle(clientName: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "$clientName ekranı bu TV'ye geliyor"
+        AppLanguage.EN -> "$clientName is coming up on this TV"
+    }
+
+    fun mirrorEndedTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Ekran yansıtma sona erdi"
+        AppLanguage.EN -> "Screen mirroring ended"
+    }
+
+    fun pinPairedTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Eşleşme tamamlandı"
+        AppLanguage.EN -> "Paired"
+    }
+
+    fun pinPairedSubtitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bu cihaz bundan sonra kod sorulmadan bağlanacak"
+        AppLanguage.EN -> "This device will connect without a code from now on"
+    }
+
+    fun pinExpiredTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kodun süresi doldu"
+        AppLanguage.EN -> "The code expired"
+    }
+
+    fun pinWrongCodeTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kod eşleşmedi"
+        AppLanguage.EN -> "The code did not match"
+    }
+
+    fun pinRetrySubtitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yeni bir kod için Apple cihazınızdan tekrar bağlanın"
+        AppLanguage.EN -> "Connect again from your Apple device for a new code"
+    }
+
+    fun pinLockedTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Çok fazla hatalı deneme"
+        AppLanguage.EN -> "Too many wrong codes"
+    }
+
+    fun pinLockedSubtitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "5 dakika sonra tekrar deneyin"
+        AppLanguage.EN -> "Try again in 5 minutes"
+    }
+
+    fun pinCancelledTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Eşleşme iptal edildi"
+        AppLanguage.EN -> "Pairing cancelled"
+    }
+
+    fun castPreparingTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Video hazırlanıyor"
+        AppLanguage.EN -> "Preparing video"
+    }
+
+    fun castPreparingSubtitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay ile bu TV'de oynatılacak"
+        AppLanguage.EN -> "It will play on this TV via AirPlay"
+    }
+
+    fun castDrmTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bu video korumalı"
+        AppLanguage.EN -> "This video is protected"
+    }
+
+    fun castDrmSubtitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Netflix, Apple TV+ gibi uygulamaların kopya korumalı (DRM) videoları bu TV'de oynatılamaz"
+        AppLanguage.EN -> "Copy-protected (DRM) videos from apps like Netflix or Apple TV+ cannot play on this TV"
+    }
+
+    fun castFailedTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Video oynatılamadı"
+        AppLanguage.EN -> "The video could not be played"
+    }
+
+    fun castFailedSubtitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bağlantıyı kontrol edip Apple cihazınızdan tekrar deneyin"
+        AppLanguage.EN -> "Check the connection and try again from your Apple device"
+    }
+
+    fun castEndedTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Oynatma sona erdi"
+        AppLanguage.EN -> "Playback ended"
+    }
+
+    fun castEndedSubtitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay bağlantısı kapatılıyor"
+        AppLanguage.EN -> "Closing the AirPlay connection"
+    }
+
+    fun nowPlayingInApp(title: String, artist: String, lang: AppLanguage): String {
+        val track = listOf(title, artist).filter { it.isNotBlank() }.joinToString(" – ")
+        return when (lang) {
+            AppLanguage.TR -> "♪ Çalıyor: $track"
+            AppLanguage.EN -> "♪ Playing: $track"
+        }
+    }
+
+    fun showNowPlaying(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Şimdi Çalınanı Göster"
+        AppLanguage.EN -> "Show Now Playing"
+    }
+
     fun nowPlayingFrom(clientName: String, lang: AppLanguage): String = when (lang) {
         AppLanguage.TR -> "$clientName cihazından AirPlay ile çalıyor"
         AppLanguage.EN -> "Playing from $clientName via AirPlay"
@@ -342,8 +485,38 @@ object AirPlayStrings {
         AppLanguage.EN -> "On – Code on First Connection"
     }
 
-    fun pinForgetDevices(count: Int, lang: AppLanguage): String = when (lang) {
-        AppLanguage.TR -> "Eşleşmiş Cihazları Unut ($count)"
-        AppLanguage.EN -> "Forget Paired Devices ($count)"
+    fun pinPairedDevices(count: Int, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Eşleşmiş Cihazlar ($count)"
+        AppLanguage.EN -> "Paired Devices ($count)"
+    }
+
+    fun pairedDevicesDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kaldırılan cihaz bir sonraki bağlantısında yeniden kod girmelidir."
+        AppLanguage.EN -> "A removed device has to enter a code again the next time it connects."
+    }
+
+    fun pairedDeviceUnknown(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bilinmeyen cihaz"
+        AppLanguage.EN -> "Unknown device"
+    }
+
+    fun pairedDeviceSince(date: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Eşleşme: $date"
+        AppLanguage.EN -> "Paired: $date"
+    }
+
+    fun pairedDeviceRemove(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kaldır"
+        AppLanguage.EN -> "Remove"
+    }
+
+    fun pairedDevicesForgetAll(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Tümünü Unut"
+        AppLanguage.EN -> "Forget All"
+    }
+
+    fun close(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kapat"
+        AppLanguage.EN -> "Close"
     }
 }
