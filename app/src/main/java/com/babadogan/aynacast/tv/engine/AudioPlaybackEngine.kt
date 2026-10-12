@@ -41,6 +41,7 @@ object AudioPlaybackEngine {
     // ...and before giving up on dropping them (unusable timestamps): play rather than stay silent.
     private const val MAX_CONSECUTIVE_SKIPS = 25
     private const val TIMESTAMP_RING_SIZE = 64
+    private const val STATS_INTERVAL_MS = 5_000L
     // FDK-based platform decoders support AAC-ELD; vendor DSP decoders frequently do not.
     private val PREFERRED_AAC_DECODERS = listOf("c2.android.aac.decoder", "OMX.google.aac.decoder")
 
@@ -53,6 +54,12 @@ object AudioPlaybackEngine {
     private var trackStarted = false
     private var bytesWrittenBeforePlay = 0
     private var framesWritten = 0L
+
+    // Output health, logged every STATS_INTERVAL_MS while audio plays.
+    private var droppedBytes = 0L
+    private var decoderInputMisses = 0
+    private var lastStatsAtMs = 0L
+    private var lastUnderruns = 0
     private val audioTimestamp = AudioTimestamp()
     private var silence = ByteArray(0)
     private var consecutiveLatePackets = 0
@@ -192,6 +199,8 @@ object AudioPlaybackEngine {
                     // Hand the buffer back even when the frame cannot be used, so the decoder never starves.
                     decoder.queueInputBuffer(inIndex, 0, 0, ptsUs, 0)
                 }
+            } else {
+                decoderInputMisses++
             }
             drainAac(decoder)
         } catch (e: IllegalStateException) {
@@ -284,6 +293,24 @@ object AudioPlaybackEngine {
         return now + (framesWritten - played) * 1_000_000_000L / sampleRate
     }
 
+    private fun queuedMs(track: AudioTrack): Long =
+        (framesWritten - track.playbackHeadPosition.toLong()) * 1000L / sampleRate
+
+    private fun logStats(track: AudioTrack) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastStatsAtMs < STATS_INTERVAL_MS) return
+        lastStatsAtMs = now
+        val bufferedMs = if (trackStarted) queuedMs(track) else framesWritten * 1000L / sampleRate
+        val underruns = track.underrunCount
+        Log.i(
+            TAG, "Audio output: ${bufferedMs} ms buffered of ${track.bufferSizeInFrames * 1000L / sampleRate} ms, " +
+                "underruns +${underruns - lastUnderruns}, dropped ${droppedBytes} B, decoder input misses $decoderInputMisses"
+        )
+        lastUnderruns = underruns
+        droppedBytes = 0
+        decoderInputMisses = 0
+    }
+
     /** Inserts up to [durationNs] of silence, always leaving room for the [reserveBytes] packet that follows. */
     private fun writeSilence(track: AudioTrack, durationNs: Long, reserveBytes: Int) {
         val frameBytes = channelCount * BYTES_PER_SAMPLE
@@ -301,6 +328,8 @@ object AudioPlaybackEngine {
         try {
             val written = track.write(data, 0, length, AudioTrack.WRITE_NON_BLOCKING)
             if (written > 0) framesWritten += written / (channelCount * BYTES_PER_SAMPLE)
+            if (written in 0 until length) droppedBytes += length - written
+            logStats(track)
             if (!trackStarted && written > 0) {
                 bytesWrittenBeforePlay += written
                 // Pre-roll a little audio before starting so the first network hiccup does not underrun.
@@ -365,6 +394,7 @@ object AudioPlaybackEngine {
         audioTrack = null
         trackStarted = false
         bytesWrittenBeforePlay = 0
+        lastUnderruns = 0
     }
 
     private fun releaseOutput() {

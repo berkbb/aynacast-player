@@ -15,6 +15,7 @@ object AirPlayAudioFormat {
 
     /** AirPlay reports -144 dB for mute and -30..0 dB for the volume slider. */
     private const val MUTE_THRESHOLD_DB = -100f
+    private const val MIN_STEP_DB = -30f
 
     private val SAMPLE_RATES = intArrayOf(
         96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350
@@ -67,6 +68,15 @@ object AirPlayAudioFormat {
     }
 
     /** Converts the sender's dB volume into an AudioTrack gain in 0..1. */
+    /**
+     * Sender volume (dB, -30 = lowest step, 0 = full, -144 = mute) as the 0..1 position of the
+     * iPhone's volume slider, for display.
+     */
+    fun volumeDbToLevel(volumeDb: Float): Float {
+        if (volumeDb.isNaN() || volumeDb <= MUTE_THRESHOLD_DB) return 0f
+        return ((volumeDb.coerceIn(MIN_STEP_DB, 0f) - MIN_STEP_DB) / -MIN_STEP_DB)
+    }
+
     fun volumeDbToGain(volumeDb: Float): Float {
         if (volumeDb.isNaN() || volumeDb <= MUTE_THRESHOLD_DB) return 0f
         return 10f.pow(volumeDb.coerceAtMost(0f) / 20f).coerceIn(0f, 1f)

@@ -13,6 +13,9 @@ import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Dedicated hardware/software video decoding pipeline for AirPlay mirroring.
@@ -53,6 +56,15 @@ object VideoDecoderEngine {
     // Decoder processing times above this are measurement noise (codec restart, stalled surface).
     private const val MAX_CODEC_DELAY_NS = 500_000_000L
     private const val TIMESTAMP_RING_SIZE = 256
+    // Minimum spacing of input presentation times. Some hardware decoders (MediaTek TV SoCs) derive
+    // the frame rate from it; a replayed GOP fed back to back would read as thousands of fps and the
+    // decoder fails to allocate resources for that rate.
+    private const val MIN_PTS_STEP_US = 16_667L
+    // How long a frame waits for a free decoder input buffer before it is dropped. A dropped delta
+    // frame corrupts every frame that references it until the next IDR, which a mirroring sender
+    // rarely sends, so waiting (the queue absorbs the backlog) is far better than dropping.
+    private const val INPUT_WAIT_US = 10_000L
+    private const val MAX_INPUT_WAIT_RETRIES = 30
 
     private sealed class Task {
         class BindSurface(val surface: Surface) : Task()
@@ -63,6 +75,10 @@ object VideoDecoderEngine {
     }
 
     private val queue = LinkedBlockingDeque<Task>()
+
+    private val _hasShownFrame = MutableStateFlow(false)
+    /** True once a frame has been rendered into the currently bound surface. */
+    val hasShownFrame: StateFlow<Boolean> = _hasShownFrame.asStateFlow()
     private val pendingFrames = AtomicInteger(0)
     private val gopInvalidated = AtomicBoolean(false)
     private var workerThread: Thread? = null
@@ -90,7 +106,10 @@ object VideoDecoderEngine {
     private val inputPtsRing = LongArray(TIMESTAMP_RING_SIZE)
     private val localTimeRing = LongArray(TIMESTAMP_RING_SIZE)
     private val arrivalDelayRing = LongArray(TIMESTAMP_RING_SIZE)
+    // System.nanoTime() at which each input entered the codec.
+    private val inputTimeRing = LongArray(TIMESTAMP_RING_SIZE)
     private var ringIndex = 0
+    private var lastInputPtsUs = 0L
     // Smoothed time the codec takes from input to output.
     private var codecDelayNs = 0L
 
@@ -191,6 +210,7 @@ object VideoDecoderEngine {
                             continue
                         }
                         boundSurface = task.surface
+                        _hasShownFrame.value = false
                         if (spsBytes != null && ppsBytes != null) {
                             rebuildCodec()
                         }
@@ -198,6 +218,7 @@ object VideoDecoderEngine {
                     is Task.UnbindSurface -> {
                         if (boundSurface === task.surface) {
                             boundSurface = null
+                            _hasShownFrame.value = false
                             releaseCodec()
                             useSoftwareDecoder = false
                         }
@@ -410,26 +431,27 @@ object VideoDecoderEngine {
         try {
             drainOutput(codec)
 
-            val timeoutUs = if (isKeyFrame) 10_000L else 0L
-            val maxRetries = if (isKeyFrame) 10 else 5
-            val retryWaitUs = if (isKeyFrame) 10_000L else 2_000L
-
-            var inIndex = codec.dequeueInputBuffer(timeoutUs)
+            var inIndex = codec.dequeueInputBuffer(INPUT_WAIT_US)
             var retries = 0
-            while (inIndex < 0 && retries < maxRetries) {
+            while (inIndex < 0 && retries < MAX_INPUT_WAIT_RETRIES) {
                 drainOutput(codec)
-                inIndex = codec.dequeueInputBuffer(retryWaitUs)
+                // A control task (surface teardown, new config) must not wait behind a busy decoder.
+                if (queue.peekFirst().let { it != null && it !is Task.Frame }) break
+                inIndex = codec.dequeueInputBuffer(INPUT_WAIT_US)
                 retries++
             }
 
             if (inIndex >= 0) {
                 val inputBuffer = codec.getInputBuffer(inIndex)
-                val presentationTimeUs = System.nanoTime() / 1000L
+                val inputTimeNs = System.nanoTime()
+                // Unique, increasing and at most 60 fps apart (see MIN_PTS_STEP_US).
+                val presentationTimeUs = maxOf(inputTimeNs / 1000L, lastInputPtsUs + MIN_PTS_STEP_US)
+                lastInputPtsUs = presentationTimeUs
                 if (inputBuffer != null && frameToSend.size <= inputBuffer.capacity()) {
                     inputBuffer.clear()
                     inputBuffer.put(frameToSend)
                     codec.queueInputBuffer(inIndex, 0, frameToSend.size, presentationTimeUs, 0)
-                    rememberTimestamp(presentationTimeUs, localTimeNs, arrivalDelayNs)
+                    rememberTimestamp(presentationTimeUs, inputTimeNs, localTimeNs, arrivalDelayNs)
                     if (remember) bytesDecoded += frameToSend.size
                     if (isKeyFrame) {
                         Log.i(TAG, "Successfully queued IDR keyframe (${frameToSend.size}B) into MediaCodec input buffer $inIndex")
@@ -486,6 +508,7 @@ object VideoDecoderEngine {
                     outIndex = codec.dequeueOutputBuffer(bufferInfo, 0L)
                     continue
                 }
+                if (!_hasShownFrame.value) _hasShownFrame.value = true
                 frameCount++
                 val now = System.currentTimeMillis()
                 val elapsed = now - lastFpsCalculationTime
@@ -504,8 +527,9 @@ object VideoDecoderEngine {
         }
     }
 
-    private fun rememberTimestamp(presentationTimeUs: Long, localTimeNs: Long, arrivalDelayNs: Long) {
+    private fun rememberTimestamp(presentationTimeUs: Long, inputTimeNs: Long, localTimeNs: Long, arrivalDelayNs: Long) {
         inputPtsRing[ringIndex] = presentationTimeUs
+        inputTimeRing[ringIndex] = inputTimeNs
         localTimeRing[ringIndex] = localTimeNs
         arrivalDelayRing[ringIndex] = arrivalDelayNs
         ringIndex = (ringIndex + 1) % TIMESTAMP_RING_SIZE
@@ -532,12 +556,13 @@ object VideoDecoderEngine {
             codec.releaseOutputBuffer(outIndex, false)
             return false
         }
-        // The input presentation time is the System.nanoTime() at which the frame entered the codec.
         val now = System.nanoTime()
-        val codecNs = now - presentationTimeUs * 1000L
+        val codecNs = if (slot >= 0) now - inputTimeRing[slot] else -1L
         if (codecNs in 0..MAX_CODEC_DELAY_NS) codecDelayNs += (codecNs - codecDelayNs) / 8
         if (!AvSync.enabled || localTimeNs <= 0L) {
-            codec.releaseOutputBuffer(outIndex, true)
+            // An explicit time: the presentation time can run ahead of the clock (MIN_PTS_STEP_US),
+            // and with render=true the display would hold the frame until then.
+            codec.releaseOutputBuffer(outIndex, now)
             return true
         }
         // The unavoidable delay (network + decoding), excluding the time a frame was held on purpose.

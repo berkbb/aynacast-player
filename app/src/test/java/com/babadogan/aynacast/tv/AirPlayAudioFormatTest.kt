@@ -48,4 +48,13 @@ class AirPlayAudioFormatTest {
         assertEquals(0f, AirPlayAudioFormat.volumeDbToGain(Float.NaN), 0f)
         assertEquals(1f, AirPlayAudioFormat.volumeDbToGain(3f), 1e-6f)
     }
+
+    @Test
+    fun testVolumeLevel() {
+        assertEquals(1f, AirPlayAudioFormat.volumeDbToLevel(0f), 1e-6f)
+        assertEquals(0.5f, AirPlayAudioFormat.volumeDbToLevel(-15f), 1e-6f)
+        assertEquals(0f, AirPlayAudioFormat.volumeDbToLevel(-30f), 1e-6f)
+        assertEquals(0f, AirPlayAudioFormat.volumeDbToLevel(-144f), 0f)
+        assertEquals(0f, AirPlayAudioFormat.volumeDbToLevel(Float.NaN), 0f)
+    }
 }

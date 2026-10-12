@@ -92,6 +92,9 @@ object AirPlayNativeBridge {
     /** When true, devices must pair with an on-screen PIN before they can connect (UxPlay -pin). */
     external fun setPinRequired(required: Boolean)
 
+    /** Ends the current mirroring / audio session and disconnects its sender; the receiver stays up. */
+    external fun disconnectSender()
+
     /** Ed25519 public keys of devices that already paired with the PIN. */
     external fun setPairedClients(keys: Array<ByteArray>)
 
