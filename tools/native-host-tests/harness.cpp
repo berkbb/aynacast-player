@@ -77,6 +77,11 @@ int main() {
             printf("ACK\n");
             continue;
         }
+        if (line == "DISCONNECT") {
+            server.disconnectSender();
+            printf("ACK\n");
+            continue;
+        }
         if (line == "STOP") {
             auto t0 = std::chrono::steady_clock::now();
             server.stop();

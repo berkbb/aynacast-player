@@ -549,6 +549,14 @@ Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_setPinRequired(
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_disconnectSender(
+        JNIEnv* /*env*/,
+        jobject /*thiz*/) {
+    std::lock_guard<std::mutex> lock(g_serverMutex);
+    if (g_server) g_server->disconnectSender();
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_setPairedClients(
         JNIEnv* env,
         jobject /*thiz*/,

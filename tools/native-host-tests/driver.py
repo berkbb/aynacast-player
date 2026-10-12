@@ -564,6 +564,21 @@ b.sendall(request("TEARDOWN", "rtsp://x/7", 6)); recv_response(b)
 check(wait_event("EVT stopped") is not None, "the new owner can end its session")
 a.close(); b.close()
 
+# 15b2b. "Stop streaming" on the TV ends the session and disconnects the sender; the receiver stays up
+d = connect()
+d.sendall(request("SETUP", "rtsp://x/9", 1, session, "application/x-apple-binary-plist")); recv_response(d)
+d.sendall(request("RECORD", "rtsp://x/9", 2)); recv_response(d)
+check(wait_event("EVT started") is not None, "disconnect: sender streams")
+wait_event("EVT connected")
+command("DISCONNECT")
+check(wait_event("EVT stopped") is not None and closed_by_peer(d), "stopping the stream on the TV ends the session and disconnects the sender")
+command("DISCONNECT")
+check(wait_event("EVT stopped", 0.3) is None, "stopping with no session is a no-op")
+e = connect()
+e.sendall(request("OPTIONS", "*", 1)); st, _, _ = recv_response(e)
+check(st == "RTSP/1.0 200 OK", "the receiver keeps accepting senders after a stop")
+d.close(); e.close()
+
 # 15b3. Rapid takeovers and disconnects from several connections at once (NTP start/stop race)
 def churn(seconds):
     end = time.time() + seconds
@@ -638,10 +653,13 @@ def http(sock, method, path, body=b"", ctype=None, sid=SID, extra=""):
     return recv_response(sock)
 
 
+_event_leftover = {}  # bytes read past the previous event, per reverse socket
+
+
 def read_event(sock):
     """Reads one POST /event the receiver sends on the reverse connection and acknowledges it."""
     sock.settimeout(3)
-    buf = b""
+    buf = _event_leftover.pop(sock, b"")
     while b"\r\n\r\n" not in buf:
         chunk = sock.recv(4096)
         if not chunk:
@@ -651,6 +669,8 @@ def read_event(sock):
     n = int([l.split(b":")[1] for l in head.split(b"\r\n") if l.lower().startswith(b"content-length")][0])
     while len(rest) < n:
         rest += sock.recv(4096)
+    if len(rest) > n:
+        _event_leftover[sock] = rest[n:]
     sock.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
     return head.decode(), plistlib.loads(rest[:n])
 
@@ -674,6 +694,8 @@ check(st == "HTTP/1.1 200 OK" and wait_event("EVT castplay") == "EVT castplay ur
 st, _, body = http(c, "GET", "/playback-info")
 check(st == "HTTP/1.1 200 OK" and body == b"", "playback-info is empty until the media is ready")
 command("CASTSTATE 2 100 10 30 1 1")
+head, ev = read_event(rev)
+check(ev == {"category": "video", "sessionID": 1, "state": "playing"}, f"playing on the TV is sent to the sender ({ev})")
 st, _, body = http(c, "GET", "/playback-info")
 pi = plistlib.loads(body)
 check(pi["duration"] == 100 and pi["position"] == 10 and pi["rate"] == 1 and pi["readyToPlay"] == 1
@@ -684,6 +706,17 @@ st, _, body = http(c, "GET", "/scrub")
 check(body == b"duration: 100.000000\nposition: 10.000000\n", "GET /scrub reports duration and position")
 http(c, "POST", "/rate?value=0.000000")
 check(wait_event("EVT castrate") == "EVT castrate 0.00", "POST /rate?value=0 pauses")
+# A pause on the TV remote: the sender must learn it, or its play button gets out of step
+command("CASTSTATE 3 100 10 30 0 1")
+head, ev = read_event(rev)
+check(ev == {"category": "video", "sessionID": 1, "state": "paused"}, f"pausing on the TV is sent to the sender ({ev})")
+command("CASTSTATE 3 100 11 30 0 1")
+rev.settimeout(0.3)
+try:
+    repeated = rev.recv(1)
+except socket.timeout:
+    repeated = None
+check(repeated is None, "an unchanged state sends no event")
 st, _, body = http(c, "PUT", "/setProperty?forwardEndTime", bplist({"value": {"epoch": 0}}), "application/x-apple-binary-plist")
 check(plistlib.loads(body) == {"errorCode": 0}, "known setProperty answered with errorCode 0")
 st, _, _ = http(c, "POST", "/fp-setup2")
@@ -703,18 +736,30 @@ check(head is not None and head.startswith("POST /event HTTP/1.1") and fcup["typ
       and fcup["request"]["FCUP_Response_URL"] == "mlhls://localhost/master.m3u8"
       and fcup["request"]["FCUP_Response_Headers"]["X-Playback-Session-Id"] == SID,
       "YouTube /play requests the master playlist through FCUP")
+def fcup_answer(req, data):
+    return http(c, "POST", "/action", bplist({"type": "unhandledURLResponse", "params": {
+        "FCUP_Response_Data": data.encode(), "FCUP_Response_RequestID": req["FCUP_Response_RequestID"],
+        "FCUP_Response_StatusCode": 0, "FCUP_Response_URL": req["FCUP_Response_URL"]}}),
+        "application/x-apple-binary-plist")[0]
+
+
+fcup_answer(fcup["request"], master)
+# One request at a time: the next one goes out only after the previous reply
 fetched = []
-for data in (master, audio_pl, video_pl):
-    rid = fcup["request"]["FCUP_Response_RequestID"]
-    url = fcup["request"]["FCUP_Response_URL"]
-    fetched.append(url)
-    st, _, _ = http(c, "POST", "/action", bplist({"type": "unhandledURLResponse", "params": {
-        "FCUP_Response_Data": data.encode(), "FCUP_Response_RequestID": rid, "FCUP_Response_StatusCode": 0,
-        "FCUP_Response_URL": url}}), "application/x-apple-binary-plist")
-    if data is not video_pl:
-        head, fcup = read_event(rev)
-check(fetched == ["mlhls://localhost/master.m3u8", "mlhls://localhost/itag/140/audio.m3u8",
-                  "mlhls://localhost/itag/136/video.m3u8"], f"media playlists fetched in master order ({fetched})")
+for data in (audio_pl, video_pl):
+    req = read_event(rev)[1]["request"]
+    fetched.append(req["FCUP_Response_URL"])
+    rev.settimeout(0.3)
+    try:
+        early = rev.recv(1)
+    except socket.timeout:
+        early = None
+    check(early is None, f"no further FCUP request before {req['FCUP_Response_URL']} is answered")
+    if data is video_pl:
+        check(wait_event("EVT castplay", 0.3) is None, "playback waits for every media playlist")
+    fcup_answer(req, data)
+check(fetched == ["mlhls://localhost/itag/140/audio.m3u8", "mlhls://localhost/itag/136/video.m3u8"],
+      f"media playlists fetched in master order ({fetched})")
 check(wait_event("EVT castplay") == "EVT castplay url=http://localhost:17000/master.m3u8 start=5.00",
       "player starts on the receiver's own master playlist")
 hls = connect()
@@ -733,6 +778,8 @@ hls.close()
 
 # Playback ends on the TV (end of media / Back): stopped event, then the session is closed
 command("CASTSTATE 2 100 50 60 1 1")
+head, ev = read_event(rev)
+check(ev["state"] == "playing", f"resuming on the TV is sent to the sender ({ev})")
 command("CASTSTATE 0 0 0 0 0 0")
 head, ev = read_event(rev)
 check(ev == {"category": "video", "sessionID": 1, "state": "stopped"}, f"receiver-side stop sends the stopped event ({ev})")
@@ -750,6 +797,7 @@ while b"\r\n\r\n" not in rhead:
 http(c, "POST", "/play", bplist({"Content-Location": "http://media.example/a.m3u8", "uuid": "U3"}), "application/x-apple-binary-plist")
 wait_event("EVT castplay")
 command("CASTSTATE 2 60 1 5 1 1")
+read_event(rev)  # "playing"
 st, _, _ = http(c, "POST", "/stop")
 check(st == "HTTP/1.1 200 OK" and wait_event("EVT caststop") is not None, "sender /stop stops the player")
 command("CASTSTATE 0 0 0 0 0 0")

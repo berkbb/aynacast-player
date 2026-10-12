@@ -321,6 +321,15 @@ void RaopRtspServer::setPinRequired(bool required) {
     LOGI("On-screen PIN pairing %s", required ? "required" : "disabled");
 }
 
+void RaopRtspServer::disconnectSender() {
+    std::lock_guard<std::mutex> session(sessionMutex_);
+    if (sessionConnection_.load() == 0) return;
+    int fd = sessionConnectionFd_;
+    endSessionLocked("stopped on the receiver");
+    // Closing the control connection is what tells the sender its session is over.
+    if (fd >= 0) shutdown(fd, SHUT_RDWR);
+}
+
 void RaopRtspServer::setPairedClients(const std::vector<std::vector<uint8_t>>& ed25519Keys) {
     std::lock_guard<std::mutex> lock(configMutex_);
     pairedClients_ = ed25519Keys;

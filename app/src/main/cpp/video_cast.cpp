@@ -31,6 +31,9 @@ const char* const kPlistFooter = "</plist>\n";
 const char* const kFcupUserAgent = "AppleCoreMedia/1.0.0.11B554a (Apple TV; U; CPU OS 7_0_4 like Mac OS X; en_us";
 const int kFcupClientRef = 40030004;
 const char* const kMasterPlaylistName = "/master.m3u8";
+// Media playlist requests in flight at once. One, as UxPlay does: iOS (YouTube) dropped about a
+// third of the replies when 8 were requested together, and the cast never started.
+const size_t kMaxFcupInFlight = 1;
 
 std::string xmlEscape(const std::string& in) {
     std::string out;
@@ -312,7 +315,7 @@ void VideoCastHandler::handle(const RtspRequest& req, RtspResponse& resp) {
             cb = callbacks_;
             stopHandled_ = true;
             fetchingPlaylists_ = false;
-            outstandingFcupId_ = 0;
+            outstandingFcup_.clear();
             pendingFcupUrl_.clear();
         }
         LOGI("Sender stopped video casting");
@@ -384,8 +387,7 @@ void VideoCastHandler::handlePlay(const RtspRequest& req, RtspResponse& resp, co
         stopHandled_ = false;
         startPosition_ = start < 0.0 ? 0.0 : start;
         hasPendingRate_ = false;
-        outstandingFcupId_ = 0;
-        outstandingFcupUrl_.clear();
+        outstandingFcup_.clear();
         pendingFcupUrl_.clear();
         if (location.rfind("http://", 0) == 0 || location.rfind("https://", 0) == 0) {
             fetchingPlaylists_ = false;
@@ -404,7 +406,7 @@ void VideoCastHandler::handlePlay(const RtspRequest& req, RtspResponse& resp, co
             mediaPlaylists_.clear();
             nextMediaIndex_ = 0;
             fetchingPlaylists_ = true;
-            if (!sendFcupRequestLocked(location)) {
+            if (!sendFcupRequestLocked(location, kMasterFcupIndex)) {
                 // /play can be handled before the sender's /reverse connection is attached.
                 LOGI("Fetching %s once the reverse event connection is up", location.c_str());
             }
@@ -445,19 +447,24 @@ void VideoCastHandler::handleAction(const RtspRequest& req, RtspResponse& resp, 
         std::lock_guard<std::mutex> lock(mutex_);
         // Only the reply to the request in flight counts. A late reply for an earlier video
         // (the user picked another one mid-fetch) must not be stored as this video's playlist.
-        bool matches = outstandingFcupId_ != 0 &&
-            (requestId && requestId->type == BplistValue::Type::Int
-                 ? requestId->intVal == outstandingFcupId_
-                 : url && url->type == BplistValue::Type::String && url->strVal == outstandingFcupUrl_);
-        if (sessionId != sessionId_ || !fetchingPlaylists_ || !matches) {
+        auto request = outstandingFcup_.end();
+        if (requestId && requestId->type == BplistValue::Type::Int) {
+            request = outstandingFcup_.find(requestId->intVal);
+        } else if (url && url->type == BplistValue::Type::String) {
+            for (auto it = outstandingFcup_.begin(); it != outstandingFcup_.end(); ++it) {
+                if (it->second.url == url->strVal) { request = it; break; }
+            }
+        }
+        if (sessionId != sessionId_ || !fetchingPlaylists_ || request == outstandingFcup_.end()) {
             LOGW("Ignoring a playlist reply that belongs to no current request");
             resp.statusCode = 400;
             resp.statusMessage = "Bad Request";
             return;
         }
-        outstandingFcupId_ = 0;
+        size_t index = request->second.index;
+        outstandingFcup_.erase(request);
         cb = callbacks_;
-        bool awaitingMaster = masterPlaylist_.empty();
+        bool awaitingMaster = index == kMasterFcupIndex;
 
         if (!valid) {
             if (awaitingMaster) {
@@ -470,7 +477,7 @@ void VideoCastHandler::handleAction(const RtspRequest& req, RtspResponse& resp, 
                 abort = true;
             } else {
                 // One variant missing: the player skips it (404) and uses the others.
-                LOGW("The sender could not provide media playlist %zu", nextMediaIndex_);
+                LOGW("The sender could not provide media playlist %zu", index);
             }
         } else if (awaitingMaster) {
             mediaUris_ = findMediaUris(playlist, uriPrefix_);
@@ -478,14 +485,14 @@ void VideoCastHandler::handleAction(const RtspRequest& req, RtspResponse& resp, 
             masterPlaylist_ = replaceAll(playlist, uriPrefix_, localPrefix_);
             nextMediaIndex_ = 0;
             LOGI("Master playlist received: %zu media playlists to fetch", mediaUris_.size());
-        } else if (nextMediaIndex_ > 0 && nextMediaIndex_ <= mediaPlaylists_.size()) {
-            mediaPlaylists_[nextMediaIndex_ - 1] = playlist;
+        } else if (index < mediaPlaylists_.size()) {
+            mediaPlaylists_[index] = playlist;
         }
 
         if (!abort) {
-            if (nextMediaIndex_ < mediaUris_.size()) {
-                sendFcupRequestLocked(mediaUris_[nextMediaIndex_++]);
-            } else {
+            requestMediaPlaylistsLocked();
+            bool done = nextMediaIndex_ >= mediaUris_.size() && outstandingFcup_.empty() && pendingFcupUrl_.empty();
+            if (done) {
                 fetchingPlaylists_ = false;
                 playUrl = localPrefix_ + kMasterPlaylistName;
                 start = startPosition_;
@@ -565,9 +572,18 @@ std::string VideoCastHandler::playbackInfoPlist() {
     return ss.str();
 }
 
-bool VideoCastHandler::sendFcupRequestLocked(const std::string& url) {
+void VideoCastHandler::requestMediaPlaylistsLocked() {
+    while (pendingFcupUrl_.empty() && nextMediaIndex_ < mediaUris_.size() &&
+           outstandingFcup_.size() < kMaxFcupInFlight) {
+        size_t index = nextMediaIndex_++;
+        if (!sendFcupRequestLocked(mediaUris_[index], index)) break;
+    }
+}
+
+bool VideoCastHandler::sendFcupRequestLocked(const std::string& url, size_t index) {
     if (reverseFd_ < 0) {
         pendingFcupUrl_ = url;
+        pendingFcupIndex_ = index;
         return false;
     }
     int64_t requestId = ++fcupRequestId_;
@@ -590,19 +606,23 @@ bool VideoCastHandler::sendFcupRequestLocked(const std::string& url) {
     LOGI("FCUP request #%lld for %s", static_cast<long long>(requestId), url.c_str());
     if (!sendEventLocked(ss.str())) {
         pendingFcupUrl_ = url; // retried if the sender opens a new reverse connection
+        pendingFcupIndex_ = index;
         return false;
     }
-    outstandingFcupId_ = requestId;
-    outstandingFcupUrl_ = url;
+    outstandingFcup_[requestId] = FcupRequest{index, url};
     pendingFcupUrl_.clear();
     return true;
 }
 
 void VideoCastHandler::sendStoppedEventLocked() {
+    sendStateEventLocked("stopped");
+}
+
+void VideoCastHandler::sendStateEventLocked(const char* state) {
     sendEventLocked(std::string(kPlistHeader) +
                     "<dict>\n  <key>category</key><string>video</string>\n"
                     "  <key>sessionID</key><integer>1</integer>\n"
-                    "  <key>state</key><string>stopped</string>\n</dict>\n" + kPlistFooter);
+                    "  <key>state</key><string>" + state + "</string>\n</dict>\n" + kPlistFooter);
 }
 
 bool VideoCastHandler::sendEventLocked(const std::string& xmlPlist) {
@@ -620,9 +640,9 @@ void VideoCastHandler::attachReverseConnection(int fd, const std::string& sessio
     reverseFd_ = fd;
     reverseSessionId_ = sessionId;
     LOGI("Reverse event connection established");
-    if (fetchingPlaylists_ && outstandingFcupId_ == 0 && !pendingFcupUrl_.empty()) {
+    if (fetchingPlaylists_ && !pendingFcupUrl_.empty()) {
         std::string url = pendingFcupUrl_;
-        sendFcupRequestLocked(url);
+        if (sendFcupRequestLocked(url, pendingFcupIndex_)) requestMediaPlaylistsLocked();
     }
 }
 
@@ -646,6 +666,13 @@ void VideoCastHandler::updatePlayback(const PlaybackInfo& info) {
                 sendStoppedEventLocked();
             }
             cb = callbacks_;
+        } else if (info.state != previous && info.state != PlayerState::STOPPED && !stopHandled_) {
+            // Playback changed on the TV (remote control, buffering) or followed a sender command:
+            // the sender only knows through these events. Without them a pause on the remote left
+            // the iPhone showing "playing", its next tap paused instead of resuming, and it ended
+            // up restarting the cast from a stale position.
+            sendStateEventLocked(info.state == PlayerState::PLAYING ? "playing"
+                                 : info.state == PlayerState::PAUSED ? "paused" : "loading");
         }
     }
     if (endedLocally) {
@@ -661,7 +688,7 @@ void VideoCastHandler::onSessionClosed() {
         std::lock_guard<std::mutex> lock(mutex_);
         wasActive = playback_.state != PlayerState::STOPPED || fetchingPlaylists_;
         fetchingPlaylists_ = false;
-        outstandingFcupId_ = 0;
+        outstandingFcup_.clear();
         pendingFcupUrl_.clear();
         stopHandled_ = true; // The sender is gone: no event to send back.
         cb = callbacks_;

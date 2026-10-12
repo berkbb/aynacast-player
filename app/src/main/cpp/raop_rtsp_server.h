@@ -86,6 +86,9 @@ public:
 
     // On-screen PIN pairing (UxPlay -pin): unregistered clients must pair with the PIN first.
     void setPinRequired(bool required);
+    // "Stop streaming" on the TV: ends the current mirroring / audio session and closes the
+    // sender's control connection. The receiver keeps running and advertising.
+    void disconnectSender();
     void setPairedClients(const std::vector<std::vector<uint8_t>>& ed25519Keys);
 
     H264StreamParser& getVideoParser() { return videoParser_; }

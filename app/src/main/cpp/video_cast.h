@@ -4,6 +4,7 @@
 #include "airplay_protocol.h"
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -64,9 +65,11 @@ private:
     void handleAction(const RtspRequest& req, RtspResponse& resp, const std::string& sessionId);
     void servePlaylist(const std::string& path, RtspResponse& resp);
     std::string playbackInfoPlist();
-    bool sendFcupRequestLocked(const std::string& url);
+    bool sendFcupRequestLocked(const std::string& url, size_t index);
+    void requestMediaPlaylistsLocked();
     bool sendEventLocked(const std::string& xmlPlist);
     void sendStoppedEventLocked();
+    void sendStateEventLocked(const char* state);
 
     std::mutex mutex_;
     Callbacks callbacks_;
@@ -84,9 +87,14 @@ private:
     std::vector<std::string> mediaPlaylists_;
     size_t nextMediaIndex_{0};
     int64_t fcupRequestId_{0};       // never reset, so a late reply for an earlier video never matches
-    int64_t outstandingFcupId_{0};   // the request whose reply we wait for; 0 = none in flight
-    std::string outstandingFcupUrl_;
+    struct FcupRequest {
+        size_t index;                // into mediaUris_, or kMasterFcupIndex
+        std::string url;
+    };
+    static constexpr size_t kMasterFcupIndex = SIZE_MAX;
+    std::map<int64_t, FcupRequest> outstandingFcup_; // requests in flight, by request ID
     std::string pendingFcupUrl_;     // to send once the reverse connection exists
+    size_t pendingFcupIndex_{kMasterFcupIndex};
     double startPosition_{0.0};
     bool hasPendingRate_{false};     // /rate received while the playlists were still being fetched
     float pendingRate_{0.0f};
