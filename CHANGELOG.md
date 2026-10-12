@@ -9,7 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Known issues
+- **Audio crackle in the first ~15 s:** Mac mirroring (AAC-ELD) and iPhone music (ALAC) underrun and overflow the 171 ms `AudioTrack` buffer while packets arrive in bursts at the start of a stream; it clears up afterwards. Two buffering fixes were reverted (Android 8 only starts a track once its buffer is full, and the TV's output once stopped consuming audio). Details and measurements in `LIVE_ADB_TESTS.md` → "Known open issues".
+- **Long-run test (Test 12) not done yet:** only an idle baseline exists (0% CPU, ~33 MB PSS, no crashes); 30 min mirroring + 30 min music with periodic memory/CPU samples is still to be run.
+
+### Added
+- **Screen transitions:** opening and closing status cards with window animations for mirroring, video casting and PIN; a closing card is not covered by the next screen.
+- **Receiver controls:** an "AirPlay off" kill switch (persisted, respected on boot) and a "Stop streaming" button that disconnects the current sender.
+- **Paired devices:** listed with name and pairing date, removable one by one; PIN outcome cards (paired, expired, wrong code, locked).
+- **Volume indicator** for sender volume changes, and a "Show Now Playing" entry while music plays.
+- Accurate status text (mirroring / playing audio / connected but idle); the Settings tab scrolls to the settings.
+
 ### Fixed
+- **MediaTek hardware decoder:** a replayed GOP fed back to back read as ~24,000 fps and the decoder failed, falling back to the software decoder; input timestamps are now spaced at least 1/60 s apart.
+- **Corrupted picture on fast scrolling:** delta frames were dropped when the decoder was briefly busy; it is now waited for.
+- **Stretched / squashed mirroring:** the TV's video plane applied its own aspect processing; mirrored video is now letterboxed with OpenGL into a full-screen frame (iPhone, iPad and Mac aspect ratios).
+- **Video casting:** pausing with the TV remote is reported to the sender (playing / paused / loading events); the session waits 5 s at the end of a video for autoplay or repeat; DRM-protected streams show an explanation; faster start (1 s start buffer).
 - **Native crashes:** Connection threads could outlive the server when the service stopped or restarted (use-after-free); they are now tracked, woken and joined. JNI callback threads are detached from the VM on exit and pending Java exceptions are cleared.
 - **Audio:** Mirroring audio (AAC-ELD) was fed into the ALAC decoder, producing noise and risking a heap overflow. The codec is now taken from the audio `SETUP` (`ct`), AAC is decoded with `MediaCodec`, and the ALAC decoder rejects corrupt frame sizes and zero-runs that overflowed its buffers.
 - **Session lifecycle:** A sender that disappears without `TEARDOWN` (Wi-Fi loss, sleep) no longer leaves the player frozen on screen; the session ends when its RTSP connection closes (TCP keep-alive detects silent drops) or when the session owner sends no `/feedback` heartbeat for 15 s (as UxPlay does).

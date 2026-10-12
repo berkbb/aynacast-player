@@ -1,326 +1,425 @@
-# AynaCast TV – Canlı ADB Test Planı
+# AynaCast TV – Live ADB Test Plan
 
-Bu belge, AynaCast TV'nin gerçek bir Android TV ve gerçek Apple cihazlarla (iPhone/iPad/Mac) uçtan uca
-doğrulanması içindir. Her testte ne yapılacağı, ekranda ne görülmesi gerektiği ve hangi log satırlarının
-çıkması gerektiği yazılıdır. Sonuçları en alttaki tabloya işleyip `tv-logs/` klasörüyle birlikte geri gönderin.
+This document is for verifying AynaCast TV end to end on a real Android TV with real Apple devices
+(iPhone/iPad/Mac). Each test says what to do, what should appear on screen and which log lines
+should show up. Fill in the table at the bottom and send it back together with the `tv-logs/` folder.
 
-> Otomatik testler (126 yerel ağ testi, 41 birim testi) protokolü doğruluyor; bu plan ise yalnızca gerçek
-> cihazda görülebilecek şeyleri (görüntü, ses, gecikme, Apple'ın gerçek davranışı, TV donanımı) hedefliyor.
+> The automated tests (126 local network tests, 41 unit tests) verify the protocol; this plan targets
+> only what can be seen on a real device (picture, sound, latency, Apple's real behaviour, TV hardware).
+
+UI labels below are the app's English ones (Settings → App Language → English); the Turkish UI uses
+the same layout.
 
 ---
 
-## 0. Hazırlık
+## 0. Preparation
 
-### Gerekenler
-- Android TV (Android 9+), geliştirici seçenekleri açık.
-- Aynı Wi-Fi/LAN ağında: en az bir iPhone/iPad, mümkünse bir Mac ve **ikinci bir Apple cihaz** (devralma testi için).
-- Bilgisayarda Android platform-tools (`adb`). macOS'ta `dns-sd`, `nc`, `curl` hazır gelir.
-- APK: depoyu derleyin (`./gradlew :app:assembleDebug` → `app/build/outputs/apk/debug/`) veya
-  `./package_tv.sh release` ile `dist/` altında üretilen paketi kullanın.
+### Requirements
+- Android TV (Android 8.0+ / API 26, the app's `minSdk`) with developer options enabled.
+- On the same Wi-Fi/LAN: at least one iPhone/iPad, ideally a Mac and a **second Apple device** (for the takeover test).
+- Android platform-tools (`adb`) on the computer. `dns-sd`, `nc` and `curl` come with macOS.
+- APK: build the repository (`./gradlew :app:assembleDebug` → `app/build/outputs/apk/debug/`). The build
+  produces one APK per CPU architecture: find the TV's with `adb shell getprop ro.product.cpu.abilist`
+  and install the matching one (`app-armeabi-v7a-debug.apk`, `app-arm64-v8a-debug.apk`) or
+  `app-universal-debug.apk`. Alternatively use the package `./package_tv.sh release` creates under `dist/`.
 
-### TV'de ağ üzerinden ADB
-1. Ayarlar → Cihaz Tercihleri → Hakkında → **Derleme numarası**'na 7 kez basın.
-2. Geliştirici seçenekleri → **USB hata ayıklama** ve (varsa) **Ağ üzerinden hata ayıklama / ADB over network**'ü açın.
-3. TV'nin IP adresini not edin (Ayarlar → Ağ).
-4. Android 11+ "Kablosuz hata ayıklama" kullanıyorsa önce eşleştirin: `adb pair IP:EŞLEŞTİRME_PORTU`.
+### ADB over the network on the TV
+1. Settings → Device Preferences → About → press **Build** 7 times.
+2. Developer options → enable **USB debugging** and (if present) **Network debugging / ADB over network**.
+3. Note the TV's IP address (Settings → Network).
+4. If Android 11+ uses "Wireless debugging", pair first: `adb pair IP:PAIRING_PORT`.
 
-### Ortam değişkenleri ve yardımcı fonksiyonlar (her terminalde bir kez)
+### Environment variables and helper function (once per terminal)
 ```bash
-export TV=192.168.1.50:5555          # TV'nin IP:port'u
+export TV=192.168.1.50:5555          # the TV's IP:port
 export TV_IP=${TV%:*}
 export PKG=com.babadogan.aynacast.tv
 mkdir -p tv-logs
 
-# Bir testin logunu temizleyip kaydeder; test bitince Ctrl+C
+# Clears the log and records one test; press Ctrl+C when the test is over.
+# Note: '*:S' must be quoted; zsh (the macOS default shell) treats an unquoted asterisk as a
+# file name pattern and the command fails with "no matches found".
 tvlog() {
   adb -s "$TV" logcat -c
   adb -s "$TV" logcat -v time \
     AirPlayRTSP:V AirPlayCrypto:V AirPlayNTP:V AirPlayVideo:V AirPlayJNI:V H264Parser:V \
     AirPlayDaemonService:V AirPlayNativeBridge:V VideoDecoderEngine:V AudioPlaybackEngine:V \
-    PinPairingManager:V VideoCastActivity:V BootReceiver:V DisplayHelper:V \
-    AndroidRuntime:E libc:F DEBUG:F *:S | tee "tv-logs/$1.log"
+    PinPairingManager:V VideoCastActivity:V BootReceiver:V DisplayHelper:V GlVideoRenderer:V \
+    EventLogger:V AndroidRuntime:E 'libc:F' 'DEBUG:F' '*:S' | tee "tv-logs/$1.log"
 }
 ```
 
-### Bağlan, kur, izinleri ver
+### Connect, install, grant permissions
 ```bash
 adb connect "$TV"
-adb -s "$TV" install -r app/build/outputs/apk/debug/app-debug.apk
-# Arka planda ekran açabilmesi için (yoksa bildirim yedeği devreye girer – bkz. Test 10)
+adb -s "$TV" install -r app/build/outputs/apk/debug/app-universal-debug.apk   # or the APK for the TV's architecture
+# Lets the app open its screens from the background (otherwise the notification fallback is used – see Test 10)
 adb -s "$TV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow
-# Android 13+ bildirim izni
+# Notification permission on Android 13+
 adb -s "$TV" shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
-adb -s "$TV" shell getprop ro.build.version.release   # Android sürümü (sonuç tablosuna yazın)
-adb -s "$TV" shell getprop ro.product.model            # TV modeli
+adb -s "$TV" shell getprop ro.build.version.release   # Android version (write it in the results table)
+adb -s "$TV" shell getprop ro.product.model            # TV model
 ```
 
 ---
 
-## 1. Kurulum ve servis başlangıcı
+## 1. Installation and service start
 
-**Adımlar**
+**Steps**
 ```bash
-tvlog 01-baslangic     # ayrı bir terminalde açık kalsın
+tvlog 01-startup     # keep this running in a separate terminal
 adb -s "$TV" shell am start -n "$PKG/.ui.AirPlaySettingsActivity"
 adb -s "$TV" shell dumpsys activity services "$PKG" | grep -E "ServiceRecord|isForeground"
 ```
 
-**Beklenen ekran:** Ayarlar açılır, "Servis Durumu: Aktif" (yeşil nokta).
+**Expected screen:** the settings screen opens with "Service Status: Active" (green dot).
 
-**Beklenen log**
+**Expected log**
 - `AirPlay Daemon Service creating.`
-- `Persistent identity loaded. Public key: <hex>` → bu anahtarı not edin (Test 11'de karşılaştırılacak).
+- `Persistent identity loaded. Public key: <hex>` → note this key (compared in Test 11).
 - `AirPlay RTSP Server started on port 7000, Video TCP on port 7100, Audio UDP on 7011`
-- `_airplay._tcp registered successfully: ...` ve `_raop._tcp registered successfully: ...`
+- `_airplay._tcp registered successfully: ...` and `_raop._tcp registered successfully: ...`
 - `Broadcasting AirPlay device name: '...', Device ID: '...', PK: '...'`
-- `dumpsys` çıktısında servis `isForeground=true`.
+- In the `dumpsys` output the service shows `isForeground=true`.
 
-**Başarısız sayılır:** `AirPlay server failed to start`, `could not be started`, `Native AirPlay core unavailable`.
+**Fails if:** `AirPlay server failed to start`, `could not be started`, `Native AirPlay core unavailable`.
 
 ---
 
-## 2. Ağda görünürlük (Mac'ten)
+## 2. Visibility on the network (from a Mac)
 
 ```bash
-dns-sd -B _airplay._tcp local.        # TV'nin adı listede görünmeli (Ctrl+C)
-dns-sd -B _raop._tcp local.           # "<MAC>@<TV adı>" görünmeli
-dns-sd -L "<TV adı>" _airplay._tcp local.   # TXT kaydı
+dns-sd -B _airplay._tcp local.        # the TV's name must be listed (Ctrl+C)
+dns-sd -B _raop._tcp local.           # "<MAC>@<TV name>" must be listed
+dns-sd -L "<TV name>" _airplay._tcp local.   # TXT record
 nc -vz "$TV_IP" 7000 && nc -vz "$TV_IP" 7100
 curl -s "http://$TV_IP:7000/server-info"
 ```
 
-**Beklenen**
-- TXT içinde `features=0x5A7FFFF7,0x1E`, `model=AppleTV...`, `pk=<Test 1'deki anahtar>`; PIN kapalıyken `pw` yok/`false`.
-- Portlar açık; `/server-info` bir XML plist döner (`features` 639, `model` AppleTV3,2).
-- iPhone'da Denetim Merkezi → Ekran Yansıtma listesinde TV görünür.
+**Expected**
+- The TXT record contains `features=0x5A7FFFF7,0x1E`, `model=AppleTV...`, `pk=<key from Test 1>`; with PIN off, `pw` is absent or `false`.
+- Ports are open; `/server-info` returns an XML plist (`features` 639, `model` AppleTV3,2).
+- The TV appears on the iPhone under Control Center → Screen Mirroring.
 
 ---
 
-## 3. iPhone ekran yansıtma (görüntü + ses)
+## 3. iPhone screen mirroring (picture + sound)
 
-**Adımlar:** `tvlog 03-yansitma-iphone` → iPhone Denetim Merkezi → Ekran Yansıtma → TV.
-Ardından sırayla: ses çalan bir video açın, iPhone'u yatay/dikey çevirin, bir listeyi hızlıca kaydırıp
-**bırakın**, ekranı birkaç saniye sabit tutun, iPhone'u kilitleyip açın.
+**Steps:** `tvlog 03-mirroring-iphone` → iPhone Control Center → Screen Mirroring → the TV.
+Then, in order: play a video with sound, rotate the iPhone between landscape and portrait (where the
+app rotates), scroll a list fast and **let go**, hold the screen still for a few seconds, lock and
+unlock the iPhone.
 
-**Beklenen ekran**
-- 1–2 saniye içinde tam ekran oynatıcı açılır; görüntü akıcı, bozulma yok.
-- Dikey iPhone kenarlarda siyah bantla ortalanır, yatayda ekranı doldurur.
-- **Kaydırma bitince son konum hemen görünür** (bir sonraki ekran değişikliğini beklemez).
-- Ses TV'den gelir, cızırtı/kesik yok; iPhone'dan ses açma-kısma TV sesini değiştirir.
+**Expected screen**
+- The "Starting screen mirroring" card appears and the full-screen player follows within 1–2 seconds; the picture is smooth, without corruption.
+- Portrait is centred with black bars on the sides; landscape fills the width with thin bars at the top and bottom. **Proportions stay correct** (round shapes stay round).
+- **When scrolling stops, the final position shows at once** (it does not wait for the next screen change).
+- Sound comes from the TV without crackle or gaps; changing the volume on the iPhone changes the TV's volume (a volume indicator slides in).
 
-**Beklenen log**
+**Expected log**
 - `Accepted incoming AirPlay connection #N from <iPhone IP>`
 - `Pair-verify Step 2 completed successfully. Channel authenticated.`
-- `NTP timing started: ...` ve kısa süre sonra `NTP synchronized with sender (round trip ... ms)`
+- `NTP timing started: ...` and shortly after `NTP synchronized with sender (round trip ... ms)`
 - `Responded to Video SETUP with streams: dataPort=7100, type=110`
 - `AirPlay session started (RECORD).` / `Mirrored video started. Launching AirPlayPlayerActivity on-demand.`
-- `MediaCodec started on worker thread: <codec adı> (1920x1080...)` – codec adı **OMX/c2 donanım** olmalı, `software=false`
-- Her saniye `Rendering video successfully at NN fps, X.XX Mbps`
-- `Audio configured: codec=8 44100 Hz` (yansıtma sesi AAC-ELD)
-- Kilitleyince `Sender paused the video stream (display asleep)`, açınca `Sender resumed the video stream`
+- `OpenGL video renderer ready`
+- `MediaCodec started on worker thread: <codec name> (...)` – the codec must be an **OMX/c2 hardware** decoder, `software=false`
+- `Rendering video successfully at NN fps, X.XX Mbps` every second
+- `Audio configured: codec=8 44100 Hz` (mirroring audio is AAC-ELD)
+- On lock `Sender paused the video stream (display asleep)`, on unlock `Sender resumed the video stream`
 
-**Başarısız sayılır:** `Attempting software decoder fallback`, `Decoder is 120 frames behind`, sürekli
-`Dropping frame`, `AAC decoder keeps failing`, `Incorrect pair-verify signature`.
+**Fails if:** `Switching to software decoder fallback`, `Attempting software decoder fallback`,
+`Decoder is 120 frames behind`, repeated `Dropping frame`, `AAC decoder keeps failing`, `Incorrect pair-verify signature`.
 
-**Ölçüm (isteğe bağlı):** iPhone'da kronometre açıp TV ile birlikte fotoğraflayın → gecikme (ms) yazın.
-
----
-
-## 4. Mac ekran yansıtma
-
-**Adımlar:** `tvlog 04-yansitma-mac` → Mac Denetim Merkezi → Ekran Yansıtma → TV. "Yerleşik ekranı
-yansıt" ve "Ayrı ekran olarak kullan" modlarının ikisini de deneyin; Mac'te ses çalın.
-
-**Beklenen:** Test 3 ile aynı; Mac adı (ör. "Berk’s MacBook Pro") ayarlar ekranında **doğru karakterlerle**
-görünür (`?` olmamalı). Ayrı ekran modunda da görüntü gelir.
+**Measurement (optional):** run a stopwatch on the iPhone and photograph it together with the TV → note the latency (ms).
 
 ---
 
-## 5. Oturum dayanıklılığı
+## 4. Mac screen mirroring
 
-| # | Adım | Beklenen ekran | Beklenen log |
-|---|------|----------------|--------------|
-| 5a | Yansıtmayı iPhone'dan durdur | Oynatıcı kapanır, önceki TV uygulamasına dönülür | `Ending AirPlay session: TEARDOWN` |
-| 5b | Yansıtırken iPhone'da Wi-Fi'yi kapat | ≤ ~15 sn içinde oynatıcı kapanır | `No request from the session owner for 15 s` veya `closed without TEARDOWN` |
-| 5c | 5b'den sonra Wi-Fi'yi aç, hemen yeniden yansıt | Bekletmeden yeniden bağlanır | gerekirse `takes over the session from` |
-| 5d | Yansıtırken TV kumandasında **Home**, sonra uygulamayı açıp **"Yansıtmayı Göster"** | Görüntü geri gelir, hızlı-ileri sarma/eski kare gösterisi yok | `Replaying N buffered frame(s) from the last keyframe` |
-| 5e | iPhone A yansıtırken **iPhone B** TV'yi seçer | A'nın yansıtması biter, B'nin görüntüsü gelir | `Connection #M takes over the session from #N` |
-| 5f | Yansıtma sürerken **başka bir bilgisayardan** `nc -vz $TV_IP 7100` | Yansıtma kesilmez | `Ignoring a video connection from <o bilgisayarın IP'si>` |
+**Steps:** `tvlog 04-mirroring-mac` → Mac Control Center → Screen Mirroring → the TV. Try both
+"Mirror Built-in Display" and "Use As Separate Display"; play sound on the Mac.
 
-> 5f'yi yansıtma yapan cihazdan yapmayın: aynı IP'den gelen bağlantı meşru bir yeniden bağlanma sayılır.
+**Expected:** same as Test 3; the Mac's name (e.g. "Berk’s MacBook Pro") appears on the settings screen
+**with the correct characters** (no `?`). The extended display mode shows a picture too, with 16:10 proportions intact.
 
 ---
 
-## 6. Yalnızca ses (Müzik) ve Now Playing ekranı
+## 5. Session resilience
 
-**Adımlar:** `tvlog 06-muzik` → iPhone Müzik/Spotify'da AirPlay simgesi → TV. Şarkıyı duraklat/devam
-ettir, sonraki şarkıya geç, iPhone'dan ses seviyesini değiştir, TV'de **Geri** tuşuna bas, 5 dk dinle.
+| # | Step | Expected screen | Expected log |
+|---|------|-----------------|--------------|
+| 5a | Stop mirroring from the iPhone | "Screen mirroring ended" card, then back to the previous TV app | `Ending AirPlay session: TEARDOWN` |
+| 5b | Turn off Wi-Fi on the iPhone while mirroring | The player closes within ~15 s | `No request from the session owner for 15 s` or `closed without TEARDOWN` |
+| 5c | After 5b, turn Wi-Fi back on and mirror again right away | Reconnects without waiting | possibly `takes over the session from` |
+| 5d | While mirroring press **Home** on the remote, then open the app and press **"Show Mirroring"** | The picture comes back, no fast-forward or stale frames | `Replaying N buffered frame(s) from the last keyframe` |
+| 5e | While iPhone A mirrors, **iPhone B** selects the TV | A's mirroring ends, B's picture appears | `Connection #M takes over the session from #N` |
+| 5f | While mirroring, run `nc -vz $TV_IP 7100` **from another computer** | Mirroring continues | `Ignoring a video connection from <that computer's IP>` |
+| 5g | While mirroring, open the app and press **"Stop Streaming"** | Mirroring ends on the TV and the iPhone; the TV stays listed | `Ending AirPlay session: stopped on the receiver` |
+| 5h | Press **"Stop AirPlay"**, check Test 2's `dns-sd`, then **"Start AirPlay"** | "AirPlay Off" with an orange dot; the TV disappears from the list and returns after Start | service stops / `registered successfully` again |
 
-**Beklenen ekran:** Kapak resmi, şarkı adı, sanatçı, albüm ve ilerleyen çubuk görünür (Türkçe karakterler
-düzgün). Şarkı değişince bilgiler güncellenir. Geri ile ekran kapanır, **müzik çalmaya devam eder**.
-Yansıtma oynatıcısı (siyah ekran) açılmaz.
+> Do not run 5f from the mirroring device: a connection from the same IP counts as a legitimate reconnect.
 
-**Beklenen log**
-- `Audio stream configured: ct=2 ...` (ALAC) veya `ct=4` (AAC-LC); Kotlin'de `Audio configured: codec=0` / `codec=4`
-- `Now playing: '<şarkı>' by '<sanatçı>' (<albüm>)`, `Cover art received (... bytes, image/jpeg)`
+---
+
+## 6. Audio only (Music) and the Now Playing screen
+
+**Steps:** `tvlog 06-music` → in Music/Spotify on the iPhone, the AirPlay icon → the TV. Pause/resume,
+skip to the next song, change the volume on the iPhone, press **Back** on the TV, listen for 5 minutes.
+
+**Expected screen:** cover art, title, artist, album and an advancing progress bar (non-ASCII characters
+correct). The information updates when the song changes. Back closes the screen, **the music keeps
+playing**, and the app's main screen shows "♪ Playing: …" with a **"Show Now Playing"** button that
+reopens it. The mirroring player (black screen) does not open. After the music stops, the status
+reads "Connected, nothing playing" until iOS closes the connection.
+
+**Expected log**
+- `Audio stream configured: ct=2 ...` (ALAC) or `ct=4` (AAC-LC); in Kotlin `Audio configured: codec=0` / `codec=4`
+- `Now playing: '<title>' by '<artist>' (<album>)`, `Cover art received (... bytes, image/jpeg)`
 - `Sender volume changed: -NN.NN dB`
+- `Audio output: NN ms buffered of NN ms, underruns +N, dropped N B, ...` every 5 s
 
-**Başarısız sayılır:** 5 dakikada duyulabilir kesik/tıkırtı, `Unsupported audio compression type`, ekranda `?` karakterleri.
+**Fails if:** audible gaps/clicks during the 5 minutes, `Unsupported audio compression type`, `?` characters on screen.
 
 ---
 
-## 7. Video oynatma (yansıtmadan, uygulamanın AirPlay düğmesiyle)
+## 7. Video playback (not mirroring – the app's own AirPlay button)
 
-### 7a. Safari / doğrudan URL
-iPhone Safari'de bir video açın (ör. Apple örnek akışı
+### 7a. Safari / direct URL
+Open a video in Safari on the iPhone (e.g. Apple's sample stream
 `https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8`;
-adres değişmişse herhangi bir web videosu), oynatıcıdaki AirPlay simgesi → TV. `tvlog 07a-safari`.
+any web video if that address has moved), the player's AirPlay icon → the TV. `tvlog 07a-safari`.
 
-| Kontrol | Beklenen |
-|---------|----------|
-| Başlangıç | TV'de tam ekran oynatıcı açılır, video oynar; iPhone "TV'de oynatılıyor" gösterir |
-| iPhone'dan duraklat / oynat / ileri sar | TV aynısını yapar, iPhone'daki süre çubuğu TV ile uyumlu |
-| TV kumandası: OK = duraklat/oynat, Sol/Sağ = ∓10 sn | Çalışır |
-| **Kumandayla duraklat → iPhone'dan oynat** | TV oynatmaya devam eder |
-| iPhone'dan durdur | TV oynatıcısı kapanır |
-| TV'de **Geri** | Oynatıcı kapanır, iPhone oynatmanın bittiğini gösterir |
-| TV'de **Home** | Video durur (arkada görünmeden çalmaya devam etmez) |
-| Video sonuna kadar oynasın | Oynatıcı kapanır, iPhone bitişi gösterir |
+| Check | Expected |
+|-------|----------|
+| Start | "Preparing video" card, then the full-screen player plays the video; the iPhone shows "Playing on TV" |
+| Pause / play / seek from the iPhone | The TV follows; the iPhone's timeline matches the TV |
+| TV remote: OK = pause/play, Left/Right = ∓10 s | Works, and the iPhone's play button / timeline follow |
+| **Pause with the remote → play from the iPhone** | The TV resumes |
+| Stop from the iPhone | "Playback ended" card, the TV player closes |
+| **Back** on the TV | The player closes; the iPhone shows that playback ended |
+| **Home** on the TV | The video stops (it does not keep playing unseen) |
+| Let the video play to the end | Last frame held for 5 s (the sender may start the next video), then the player closes and the iPhone shows the end |
 
-**Beklenen log:** `Video casting requested: https://... (start X s)`, `Casting https://... from Xs`,
-sarmada `Sender seeks to NN.NN s`, TV tarafında bitişte `Video casting ended on the receiver; closing the casting session`.
+**Expected log:** `Video casting requested: https://... (start X s)`, `Casting https://... from Xs`,
+`Sender seeks to NN.NN s` on seeks; at the end on the TV side `Video casting ended on the receiver; closing the casting session`.
 
-### 7b. YouTube uygulaması
-YouTube'da bir video → AirPlay simgesi → TV. `tvlog 07b-youtube`. Oynarken ileri sarın, duraklatın;
-sonra **hemen başka bir videoya** geçin; en sonunda iPhone'dan bağlantıyı kesin.
+### 7b. The YouTube app
+A video in YouTube → AirPlay icon → the TV. `tvlog 07b-youtube`. Seek and pause while it plays;
+then **switch to another video right away**; let a short video play to its end with autoplay on;
+finally disconnect from the iPhone.
 
-**Beklenen log (sırayla)**
+**Expected log (in order)**
 - `Video casting requested: mlhls://localhost/master.m3u8`
 - `FCUP request #N for mlhls://localhost/master.m3u8`
 - `Master playlist received: K media playlists to fetch`
-- `FCUP request #...` (her medya listesi için)
+- `FCUP request #...` (one per media playlist, one at a time)
 - `All playlists fetched; starting playback of http://localhost:7000/master.m3u8`
 - `Casting http://localhost:7000/master.m3u8 from ...`
-- Video değiştirince yeni bir `Video casting requested`; varsa `Ignoring a playlist reply that belongs to no current request` (normal)
+- A new `Video casting requested` when the video changes; possibly `Ignoring a playlist reply that belongs to no current request` (normal)
+- At the end of a video with autoplay on: the next `Video casting requested` within 5 s, on the same screen
 
-**Başarısız sayılır:** `The sender could not provide the master playlist; stopping`, oynatıcı açılıp siyah
-kalması, `Video casting playback failed`. Bu durumda ilgili logu mutlaka gönderin (bkz. Sorun Giderme).
+**Fails if:** `The sender could not provide the master playlist; stopping`, the player opening and staying
+black, `Video casting playback failed`. Send the log in that case (see Troubleshooting).
 
-### 7c. DRM'li uygulama (beklenen: desteklenmez)
-Netflix / Apple TV+ / Disney+'ta AirPlay deneyin. **Beklenen:** uygulama çökmez; iPhone hata gösterir veya
-yansıtmaya düşer. Log: `HTTP Request: POST /fp-setup2`. (FairPlay korumalı içerik bilinçli olarak desteklenmiyor.)
+### 7c. DRM-protected app (expected: not supported)
+Try AirPlay from Netflix / Apple TV+ / Disney+. **Expected:** the app does not crash; an unprotected
+intro may play, then the TV shows the **"This video is protected"** card and the iPhone shows an error
+or falls back to mirroring. Log: `ERROR_CODE_DRM_SCHEME_UNSUPPORTED` or `HTTP Request: POST /fp-setup2`.
+(FairPlay-protected content is deliberately not supported.)
 
 ---
 
-## 8. PIN ile eşleşme
+## 8. PIN pairing
 
-**Hazırlık:** Ayarlar → **Bağlantı Kodu (PIN)** → Açık. Mac'te `dns-sd -L "<TV adı>" _airplay._tcp local.`
-ile `pw=true` görüldüğünü kontrol edin. `tvlog 08-pin`.
+**Preparation:** Settings → **Connection Code (PIN)** → "On – Code on First Connection". On the Mac,
+check `pw=true` with `dns-sd -L "<TV name>" _airplay._tcp local.`. `tvlog 08-pin`.
 
-| # | Adım | Beklenen |
+| # | Step | Expected |
 |---|------|----------|
-| 8a | iPhone ilk kez bağlanır | TV'de 4 haneli kod, iPhone kod ister; doğru kodla yansıtma başlar. Log: `Sender requested on-screen PIN pairing`, `PIN pairing started`, `Device paired with PIN`, `PIN pairing completed; device registered` |
-| 8b | Aynı iPhone yeniden bağlanır | Kod sorulmaz |
-| 8c | Yeni cihazda bir kez **yanlış** kod | iPhone yeniden sorar; TV'de ekrandaki kod (iPhone baştan başlatırsa yeni bir kod) girilince eşleşir. Log: `Wrong PIN entered on the sender` |
-| 8d | Kod ekranındayken 2 dk bekle | Kod ekranı kendiliğinden kapanır. Log: `PIN code expired` |
-| 8e | Servisi yeniden başlat (Ayarlar → "Servisi Yeniden Başlat") ve TV'yi yeniden başlat (`adb -s $TV reboot`) | 8a'daki iPhone **kod sorulmadan** bağlanır (kalıcı kimlik) |
-| 8f | Ayarlar → "Eşleşmiş Cihazları Unut (N)" | Sonraki bağlantıda kod tekrar sorulur |
-| 8g | Bir cihazla art arda 9 kez yanlış kod | 5 dk yeni kod gösterilmez. Log: `Too many wrong codes; PIN pairing locked for 300 s` |
-| 8h | Video oynatma (Test 7a) sürerken **ikinci bir** cihaz TV'yi seçer | Kod ekranı açılır, devam eden video **kapanmaz** |
+| 8a | The iPhone connects for the first time | A 4-digit code on the TV, the iPhone asks for it; the right code starts mirroring after a green "Paired" card. Log: `Sender requested on-screen PIN pairing`, `PIN pairing started`, `Device paired with PIN`, `PIN pairing completed; device registered` |
+| 8b | The same iPhone connects again | No code is asked |
+| 8c | A **wrong** code once on a new device | The iPhone asks again; entering the code on screen (a new code if the iPhone restarts) pairs. Log: `Wrong PIN entered on the sender` |
+| 8d | Wait 2 min on the code screen | "The code expired" card, then the screen closes. Log: `PIN code expired` |
+| 8e | Restart the service (Settings → "Restart Service") and reboot the TV (`adb -s $TV reboot`) | The iPhone from 8a connects **without a code** (persistent identity) |
+| 8f | Settings → "Paired Devices (N)" | The list shows each device with its name and pairing date; "Remove" or "Forget All" makes the next connection ask for a code again |
+| 8g | 9 wrong codes in a row from one device | "Too many wrong codes" card; no new code for 5 min. Log: `Too many wrong codes; PIN pairing locked for 300 s` |
+| 8h | While a video plays (Test 7a), a **second** device selects the TV | The code screen opens, the playing video **does not close** |
 
-Testten sonra PIN'i tekrar **Kapalı** yapın (varsayılan).
+Set PIN back to **"Off – No Code"** after the test (the default).
 
 ---
 
-## 9. Ses-görüntü senkronu (isteğe bağlı ayar)
+## 9. Audio/video sync (optional setting)
 
-**Adımlar:** YouTube'da "audio video sync test" / "lip sync test" videosunu **yansıtma** modunda
-(Test 3 gibi) oynatın. Önce ayar **Kapalı**, sonra Ayarlar → **Ses-Görüntü Senkronu (Zaman Damgası)** → Açık.
-Ayarı yansıtma sürerken değiştirin. `tvlog 09-senkron`.
+**Steps:** play an "audio video sync test" / "lip sync test" video from YouTube in **mirroring** mode
+(as in Test 3). First with the setting **off**, then Settings → **Audio/Video Sync (Timestamps)** →
+"On – Timestamp Sync". Change the setting while mirroring. `tvlog 09-sync`.
 
-**Beklenen**
-- Kapalıyken: en düşük gecikme; dudak senkronu TV'ye göre biraz kayık olabilir (not alın: ses önde mi geride mi, yaklaşık kaç ms).
-- Açıkken: bip ile flaş çakışır; ses kesilmez, görüntü takılmaz. Ayar değişikliği **hemen** etkili olur.
+**Expected**
+- Off: lowest latency; lip sync may be slightly off for the TV (note whether audio leads or trails, roughly by how many ms).
+- On: the beep and the flash coincide; audio does not cut out, the picture does not stutter. The change takes effect **immediately**.
 - Log: `Timestamp audio/video sync enabled`.
 
-**Başarısız sayılır:** Açıkken sesin tamamen kesilmesi, düzenli tıkırtı, sürekli `Dropping frame`, fps'in
-belirgin düşmesi (`Rendering video successfully at NN fps` değerlerini karşılaştırın).
+**Fails if:** audio cuts out completely when on, regular clicks, constant `Dropping frame`, a clear fps
+drop (compare the `Rendering video successfully at NN fps` values).
 
 ---
 
-## 10. Arka plandan açılma yedeği (izin yokken)
+## 10. Background launch fallback (without the permission)
 
 ```bash
 adb -s "$TV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW deny
 ```
-TV'de başka bir uygulama (ör. YouTube) açıkken: yansıtma başlatın; PIN açıkken yeni cihaz bağlayın; video oynatın.
+With another app (e.g. YouTube) open on the TV: start mirroring; with PIN on, connect a new device; play a video.
 
-**Beklenen:** Ekranlar kendiliğinden açılamazsa bildirim gelir; bildirime tıklayınca ilgili ekran açılır.
-PIN bildiriminde **kodun kendisi** yazar. Ekran görününce bildirim kaybolur.
-Log: `Could not open ...` olabilir; uygulama çökmemeli. Test sonunda:
+**Expected:** if a screen cannot open by itself, a notification appears; selecting it opens that screen.
+The PIN notification shows **the code itself**. The notification disappears once the screen is visible.
+Log: `Could not open ...` is possible; the app must not crash. Afterwards:
 ```bash
 adb -s "$TV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow
 ```
 
+> Only applies to Android 10+: older versions do not restrict background activity starts.
+
 ---
 
-## 11. Açılışta otomatik başlama ve kalıcı kimlik
+## 11. Autostart on boot and persistent identity
 
 ```bash
 adb -s "$TV" reboot
-# TV açılınca (uygulamayı açmadan):
-adb connect "$TV"; tvlog 11-acilis
+# Once the TV is up (without opening the app):
+adb connect "$TV"; tvlog 11-boot
 ```
-**Beklenen:** Uygulama açılmadan TV, iPhone'un Ekran Yansıtma listesinde görünür.
-Log: `BootReceiver` satırları ve `Persistent identity loaded. Public key: <Test 1 ile AYNI hex>`.
+**Expected:** without opening the app, the TV appears in the iPhone's Screen Mirroring list (the boot
+broadcast can reach the app up to a minute after boot). Log: `BootReceiver` lines and
+`Persistent identity loaded. Public key: <the SAME hex as in Test 1>`. With "Stop AirPlay" active
+the service must **not** start on boot.
 
 ---
 
-## 12. Uzun süre ve kaynak kullanımı
+## 12. Long run and resource usage
 
-30 dakika kesintisiz yansıtma (video + ses), sonra 30 dakika müzik. Bu sırada iki kez:
+30 minutes of continuous mirroring (video + sound), then 30 minutes of music. Sample every 5 minutes:
 ```bash
-adb -s "$TV" shell top -b -n 1 | grep -i aynacast       # CPU %
-adb -s "$TV" shell dumpsys meminfo "$PKG" | grep -E "TOTAL|Native Heap"
-adb -s "$TV" logcat -b crash -d                          # çökme kaydı (boş olmalı)
+for i in $(seq 0 13); do
+  { echo "=== $(date +%T)"
+    adb -s "$TV" shell top -b -n 1 | grep -i aynacast                       # CPU %
+    adb -s "$TV" shell dumpsys meminfo "$PKG" | grep -E "TOTAL|Native Heap|Java Heap"
+    echo "crash: $(adb -s "$TV" logcat -b crash -d | wc -l)"; } >> tv-logs/12-resources.log   # crash buffer (should stay 0)
+  sleep 300
+done
 ```
-**Beklenen:** Çökme/ANR yok; bellek sürekli artmıyor (ilk ve son ölçüm yakın); sabit ekranda CPU makul
-(yansıtma sürerken ölçülen değerleri tabloya yazın). Görüntü/ses sonradan kaymıyor.
+**Expected:** no crash/ANR; memory does not keep growing (first and last samples close); reasonable CPU
+on a still screen (write the values measured while mirroring into the table). Picture and sound do not drift over time.
 
 ---
 
-## Sorun giderme
+## Troubleshooting
 
-- **TV listede görünmüyor:** Test 2'deki `dns-sd` çıktısını ve `tv-logs/01-baslangic.log`'u gönderin. Router'da
-  "AP/istemci yalıtımı" ve multicast/mDNS engeli olmadığını kontrol edin.
-- **Siyah ekran:** `MediaCodec started` ve `Rendering video successfully` satırları var mı bakın; codec adını yazın.
-- **YouTube oynatmıyor:** `07b-youtube.log` dosyasını gönderin. Bilinen tek şüphe: AirPlay özellik
-  bitlerinin üst kelimesi (`0x1E`) UxPlay'den (`0x0`) farklı; gerekirse `AirPlayFeatures.kt` içinde denenecek.
-- **Ekran görüntüsü:** `adb -s "$TV" exec-out screencap -p > tv-logs/ekran.png`
-  (bazı TV'lerde video katmanı ekran görüntüsünde siyah çıkar; bu bir hata değildir).
-- **Çökme:** `adb -s "$TV" logcat -b crash -d > tv-logs/crash.log` ve mümkünse `adb -s "$TV" bugreport tv-logs/bugreport.zip`.
+- **The TV is not listed:** send Test 2's `dns-sd` output and `tv-logs/01-startup.log`. Check that the router
+  has no "AP/client isolation" and does not block multicast/mDNS.
+- **Black screen:** look for `MediaCodec started` and `Rendering video successfully` lines; note the codec name.
+- **YouTube does not play:** send `07b-youtube.log`. The only known suspect: the upper word of the AirPlay
+  feature bits (`0x1E`) differs from UxPlay (`0x0`); try it in `AirPlayFeatures.kt` if needed.
+- **Screenshot:** `adb -s "$TV" exec-out screencap -p > tv-logs/screen.png`
+  (on some TVs the video plane, and screens during window animations, come out black; that is not a bug).
+- **Crash:** `adb -s "$TV" logcat -b crash -d > tv-logs/crash.log` and if possible `adb -s "$TV" bugreport tv-logs/bugreport.zip`.
 
 ---
 
-## Sonuç tablosu (doldurup gönderin)
+## Known open issues
 
-TV modeli / Android sürümü: ……………… · iPhone modeli / iOS: ……………… · Mac / macOS: ………………
+### Audio: crackle and stutter in the first ~15 seconds of a stream (Mac and iPhone)
 
-| Test | Sonuç (✅/❌/–) | Not (gecikme, fps, gözlem) |
-|------|-----------------|----------------------------|
-| 1 Kurulum ve servis | | |
-| 2 Ağda görünürlük | | |
-| 3 iPhone yansıtma | | |
-| 4 Mac yansıtma | | |
-| 5a–5f Oturum dayanıklılığı | | |
-| 6 Müzik + Now Playing | | |
+**Symptom:** with Mac screen mirroring (AAC-ELD) and iPhone music (ALAC), crackle and short gaps are
+heard in the first 10–15 seconds after audio starts; then the sound is clean. In the default
+lowest-latency mode the audio can trail the picture slightly (~0.2–0.3 s on the Mac).
+
+**Measurement** (`AudioPlaybackEngine` logs an `Audio output:` line every 5 seconds):
+
+| Sender | First 15 s | Afterwards |
+|--------|------------|------------|
+| Mac (AAC-ELD) | underruns +1/+23/+1, ~76 KB dropped (~0.43 s of audio) | 56–114 ms buffered, no loss |
+| iPhone music (ALAC) | underruns +12/+14, ~150 KB dropped | 140–160 ms buffered, no loss |
+
+At the start audio packets arrive **in bursts**: the 171 ms `AudioTrack` buffer overflows
+(`WRITE_NON_BLOCKING` silently drops what does not fit) and drains in the gaps between bursts
+(underruns). No packet loss or retransmission was seen on the network.
+
+**Fixes tried and reverted:**
+1. A 400 ms buffer + 80 ms pre-roll + a 220 ms latency cap → on Android 8 an `AudioTrack` **does not
+   start playing until its buffer is full**; the cap kept the buffer from filling, so there was no sound at all.
+2. A 120 ms effective buffer until playback starts, then opened up to 400 ms → the crackle was gone,
+   but after about a minute the TV's audio output **stopped consuming** (the buffer froze at 228 ms)
+   and the cap then dropped all audio.
+
+Both attempts were reverted; the audio path is back to the original, with only the measurement line added.
+
+**Next step:** the real root cause is the **playback stall** seen in the second attempt. Trace the TV's
+audio system (audio focus, Philips sound processing or the `AudioTrack` state); then retry buffering
+that absorbs the bursts but does not silence audio during a stall (e.g. apply the cap only while
+`playbackHeadPosition` advances). The Audio/Video Sync (Timestamps) mode aligns the latency, but
+this crackle should be measured with it separately.
+
+### Test 12 (long run / resource usage) not done yet
+
+Skipped in the 12 October 2026 run. Only an idle baseline exists: 0% CPU, ~33 MB total memory (PSS),
+6.4 MB native heap, 5.3 MB Java heap, empty crash buffer. Sample every 5 minutes (memory growth, CPU,
+crashes) during 30 min of mirroring + 30 min of music with the loop in Test 12.
+
+### Not tried in this run
+
+- **5e** (a second Apple device taking over the session) – no second device was used.
+- **9, "On" mode** – only the default "Off" mode was checked (audio and video in sync on the iPhone).
+- **10** – not applicable on this TV: Android 8 does not restrict background activity starts (Android 10+ does).
+
+---
+
+## Last run: 12 October 2026
+
+Philips TPM171E (MediaTek, Android 8.0, armeabi-v7a, 1080p @ 50 Hz output) · iPhone 13 Pro · MacBook Air
+
+| Test | Result | Notes |
+|------|--------|-------|
+| 1 Installation and service | ✅ | |
+| 2 Network visibility | ✅ | |
+| 3 iPhone mirroring | ✅ | Fixed: MTK hardware decoder failure (PTS spacing), corruption on fast scrolling, squashed landscape (GPU letterbox) |
+| 4 Mac mirroring | ✅ / ⚠️ | Picture correct in both modes; audio: see the open issue above |
+| 5a–5f Session resilience | ✅ | 5e not tried; 5b ≈ 15 s |
+| 6 Music + Now Playing | ✅ | Volume indicator and "Show Now Playing" added |
+| 7a Safari / URL video | ✅ | Fixed: a pause on the remote was not reported to the iPhone |
+| 7b YouTube | ✅ | 5 s wait for autoplay at the end of a video; the 50 Hz output skips frames of 60 fps videos |
+| 7c DRM | ✅ | No crash; "This video is protected" card |
+| 8 PIN pairing | ✅ | Paired device list (name, date, remove one by one) |
+| 9 Audio/video sync | ✅ | Default mode |
+| 10 Notification fallback | – | Not applicable on Android 8 |
+| 11 Boot + persistent identity | ✅ | Service up ~55 s after boot (system broadcast order) |
+| 12 Long run / resources | – | Not done (see above) |
+
+No crash records during the run.
+
+---
+
+## Results table (fill in and send back)
+
+TV model / Android version: ……………… · iPhone model / iOS: ……………… · Mac / macOS: ………………
+
+| Test | Result (✅/❌/–) | Notes (latency, fps, observations) |
+|------|------------------|------------------------------------|
+| 1 Installation and service | | |
+| 2 Network visibility | | |
+| 3 iPhone mirroring | | |
+| 4 Mac mirroring | | |
+| 5a–5h Session resilience | | |
+| 6 Music + Now Playing | | |
 | 7a Safari / URL video | | |
 | 7b YouTube | | |
-| 7c DRM (beklenen: desteklenmez) | | |
-| 8a–8h PIN eşleşme | | |
-| 9 Ses-görüntü senkronu | | |
-| 10 Bildirim yedeği | | |
-| 11 Açılış + kalıcı kimlik | | |
-| 12 Uzun süre / kaynak | | |
+| 7c DRM (expected: not supported) | | |
+| 8a–8h PIN pairing | | |
+| 9 Audio/video sync | | |
+| 10 Notification fallback | | |
+| 11 Boot + persistent identity | | |
+| 12 Long run / resources | | |
 
-Gönderilecekler: bu tablo + `tv-logs/` klasörünün tamamı.
+Send: this table + the whole `tv-logs/` folder.
