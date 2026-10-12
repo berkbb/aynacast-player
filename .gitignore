@@ -107,3 +107,6 @@ replay_pid*
 # Kotlin compiler session data and error logs (Kotlin 2.x)
 .kotlin/
 *.bak
+
+# Logs and screenshots from live ADB testing on a real TV (device names, IPs)
+tv-logs/
