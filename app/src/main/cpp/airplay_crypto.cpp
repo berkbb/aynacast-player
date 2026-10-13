@@ -300,7 +300,8 @@ bool AirPlayCrypto::handleFpSetup(uint64_t connectionId, const std::vector<uint8
         // FairPlay Phase 2 handshake (32 bytes response). Byte 12 selects one of the 4 key tables
         // playfair_decrypt indexes later, so it must be validated here (UxPlay checks byte 4).
         if (reqBody[4] != 0x03 || reqBody[12] >= 4) {
-            LOGE("Rejecting malformed FairPlay key message");
+            LOGE("Rejecting malformed FairPlay key message (version byte %02x, mode byte %02x, size %zu)",
+                 reqBody[4], reqBody[12], reqBody.size());
             return false;
         }
         hs.fpKeyMsg.assign(reqBody.begin(), reqBody.begin() + 164);

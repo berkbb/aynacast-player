@@ -374,6 +374,14 @@ there does not start until its buffer is full, and once stopped consuming after 
 iPhone music (ALAC); whether the ~0.35 s audio delay is acceptable for lip-sync (otherwise use the
 sync setting, which delays the picture to match).
 
+### Mac Music app → TV: "unknown error 400" (not supported)
+
+The Music app on macOS connects with **FairPlay version 2** (`Rejecting malformed FairPlay key message
+(version byte 02, …)`), with the PIN on or off. The FairPlay code (from UxPlay) only implements version 3,
+and UxPlay rejects version 2 the same way; there is no open-source FairPlay 2. Mac screen mirroring uses
+version 3 and plays sound (Test 4), and iPhone Apple Music works (Test 6). A possible route is RSA
+(AirPort Express, `et=1`) audio encryption as in shairport-sync.
+
 ### Test 12 (long run / resource usage) not done yet
 
 Skipped in the 12 October 2026 run. Only an idle baseline exists: 0% CPU, ~33 MB total memory (PSS),
