@@ -431,12 +431,13 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | 6 Music + Now Playing | ✅ | Apple Music (ALAC) through the jitter buffer, see 4f below |
 | 7a Safari / URL video | ✅ / ⚠️ | Remote play/pause (`KEYCODE_MEDIA_PLAY_PAUSE`, scan 164) and OK reach the player and are reported to the iPhone; iPhone pause/play is followed. Started from Safari, the iPhone keeps a screen mirroring session open and several times ended the cast itself after 6–24 s (`/rate 0` + `/stop`, then mirroring again) while the TV was playing normally |
 | 7b YouTube | ✅ | |
+| 7c DRM | ✅ | Apple TV+: `Video casting requested` (FairPlay HLS), ExoPlayer `UnsupportedDrmException` ~18 s later, "protected" card on the TV, no crash |
 | 8 PIN pairing | ✅ | Pairing after removing the device; with the permission the PIN screen opens over YouTube |
 | 9 Audio/video sync (On) | ✅ | Mac mirroring: lip sync good by ear; HW decoder, avg 45 fps, no drops; old direct-AudioTrack path: 0 underruns, buffer at 600–680 of 700 ms (≈0.6 s latency), small overflow drops (13 KB at the start, then 1–3 KB now and then). If it crackles, the 700 ms track is the first thing to raise |
 | 11 Boot + persistent identity | ✅ | `BootReceiver` started the service ~45 s after boot completed (other apps' boot broadcasts first); same public key `9fd6a4ed…`; iPhone sees the TV without opening the app; the paired Mac plays without being asked for the code again |
 | 10 Background launch fallback | ✅ (fixed) | Without the permission Android aborts the start (`Abort background activity starts`) and the fallback notification is posted but **never shown**: Android TV only lists it in the notification panel. Added: a toast over the app in use (the PIN code for ~10 s, or "… is mirroring; … open AynaCast TV") and a permission dialog when the app is opened without it |
 
-Not run on this TV: 7c, 12 (12 skipped on purpose). Mac Music app: through "Arcelik Android TV (Mac)" (see below).
+Not run on this TV: 12 (skipped on purpose). Mac Music app: through "Arcelik Android TV (Mac)" (see below).
 
 **Discovery:** chronic on this TV (also after a reboot): it receives no multicast/broadcast on Wi-Fi.
 The "Refresh Visibility" setting (on by default) re-registers the mDNS records every 60 s while idle
