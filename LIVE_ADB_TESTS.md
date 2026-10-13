@@ -449,9 +449,9 @@ TV disappears from the iPhone, check with `dns-sd -B _airplay._tcp` and reconnec
 
 ### Changes made on Android 11 – compare on Android 8
 
-Commits `863f2c9`, `6493ed3`, `3ddc418` were developed and measured only on the Arçelik (Android 11).
-The Philips (Android 8) last ran the build before them; rerun Tests 3, 4 and 6 there and fill in the
-last column.
+Commits `863f2c9` … `4fedffa` (13 October) were developed and measured only on the Arçelik (Android 11).
+The Philips (Android 8) last ran the build before them; rerun Tests 3, 4, 5c, 6 and the Mac Music entry
+there and fill in the last column.
 
 | # | Change | Android 11 (Arçelik, Mac mirroring) | Android 8 (Philips) |
 |---|--------|-------------------------------------|---------------------|
@@ -465,6 +465,9 @@ last column.
 | 4d | – output stall (`Audio output stalled`) | Never | Seen? Sound after 1+ minute? (the earlier 400 ms attempt froze here) |
 | 4e | – track start (Android 8 starts an `AudioTrack` only once its buffer is full) | – | Sound starts at once? |
 | 4f | – iPhone Apple Music (ALAC, Test 6) | Music profile (target starts at 400 ms): 1 refill in the first ~30 s (Wi-Fi gaps up to 488 ms), then no loss. With the mirroring profile it had 6 | Refills / crackle: |
+| 5 | Toast + permission dialog when a screen cannot open (Test 10) | Toast with the PIN / "… open AynaCast TV" over YouTube; dialog on app launch | Not applicable (Android 8 has no background-launch limit): screens should open as before, no toast |
+| 6 | Mac Music app through "<name> (Mac)" (classic AirPlay, RSA) | Plays, volume follows, PIN as the Mac's password, remembered after reboot | Entry listed? Plays? PIN prompt? |
+| 7 | "Refresh Visibility" (re-announce every 60 s while idle) | iPhone found the TV again ~30 s after rejoining Wi-Fi (never before) | Multicast works there, so mainly: no visible flicker / side effects? |
 
 **Command for the audio numbers:**
 `grep "Audio output" tv-logs/<test>.log` – one line every 5 seconds.
