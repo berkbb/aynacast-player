@@ -112,6 +112,7 @@ unlock the iPhone.
 
 **Expected screen**
 - The "Starting screen mirroring" card appears and the full-screen player follows within 1–2 seconds; the picture is smooth, without corruption.
+- The info box at the top right (first 6 seconds) ends in **`• HW`**. `• SW` means the software decoder is in use: the picture lags on most TVs, so collect the log even if it looks acceptable.
 - Portrait is centred with black bars on the sides; landscape fills the width with thin bars at the top and bottom. **Proportions stay correct** (round shapes stay round).
 - **When scrolling stops, the final position shows at once** (it does not wait for the next screen change).
 - Sound comes from the TV without crackle or gaps; changing the volume on the iPhone changes the TV's volume (a volume indicator slides in).
@@ -131,6 +132,10 @@ unlock the iPhone.
 **Fails if:** `Switching to software decoder fallback`, `Attempting software decoder fallback`,
 `Decoder is 120 frames behind`, repeated `Dropping frame`, `AAC decoder keeps failing`, `Incorrect pair-verify signature`.
 
+**Worth noting (not a failure):** `Retrying the hardware decoder without optional low-latency keys` followed by
+`MediaCodec started ... software=false, minimalFormat=true` – the hardware decoder rejected an optional
+setting and runs without it. Write the codec name and the `ACodec` error lines just before it in the notes.
+
 **Measurement (optional):** run a stopwatch on the iPhone and photograph it together with the TV → note the latency (ms).
 
 ---
@@ -138,7 +143,9 @@ unlock the iPhone.
 ## 4. Mac screen mirroring
 
 **Steps:** `tvlog 04-mirroring-mac` → Mac Control Center → Screen Mirroring → the TV. Try both
-"Mirror Built-in Display" and "Use As Separate Display"; play sound on the Mac.
+"Mirror Built-in Display" and "Use As Separate Display"; play sound on the Mac (choose the TV as the
+sound output). Play a full-screen video too: an idle desktop sends frames of only a few hundred bytes
+(`Video stream active: ... payloadLen=` ≈ 150–350, about 0.1 Mbps) and does not load the decoder.
 
 **Expected:** same as Test 3; the Mac's name (e.g. "Berk’s MacBook Pro") appears on the settings screen
 **with the correct characters** (no `?`). The extended display mode shows a picture too, with 16:10 proportions intact.
@@ -320,6 +327,10 @@ on a still screen (write the values measured while mirroring into the table). Pi
 - **The TV is not listed:** send Test 2's `dns-sd` output and `tv-logs/01-startup.log`. Check that the router
   has no "AP/client isolation" and does not block multicast/mDNS.
 - **Black screen:** look for `MediaCodec started` and `Rendering video successfully` lines; note the codec name.
+- **Lag / stutter:** check `software=` in the `MediaCodec started` line (or `• SW` on screen) and count
+  `Decoder is 120 frames behind`. If the software decoder is in use, the `ACodec` / `OMXNodeInstance` lines
+  just before `Failed to configure and start MediaCodec` name the setting the hardware decoder rejected
+  (e.g. `decoder can not set low-latency to 1`).
 - **YouTube does not play:** send `07b-youtube.log`. The only known suspect: the upper word of the AirPlay
   feature bits (`0x1E`) differs from UxPlay (`0x0`); try it in `AirPlayFeatures.kt` if needed.
 - **Screenshot:** `adb -s "$TV" exec-out screencap -p > tv-logs/screen.png`
@@ -373,6 +384,19 @@ crashes) during 30 min of mirroring + 30 min of music with the loop in Test 12.
 - **5e** (a second Apple device taking over the session) – no second device was used.
 - **9, "On" mode** – only the default "Off" mode was checked (audio and video in sync on the iPhone).
 - **10** – not applicable on this TV: Android 8 does not restrict background activity starts (Android 10+ does).
+
+---
+
+## Partial run: 13 October 2026
+
+Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 Hz) · MacBook Air
+
+| Test | Result | Notes |
+|------|--------|-------|
+| 1 Installation and service | ✅ | Release APK (armeabi-v7a) |
+| 4 Mac mirroring | ✅ | Fixed: `OMX.MS.AVC.Decoder` rejects `KEY_LOW_LATENCY`, Android 11 then fails `configure()` and the software decoder (~40 fps, 467 dropped frames per minute) lagged visibly. Now hardware, ~51 fps, no drops. Idle desktop only; audio and full-screen video not tried |
+
+The other tests were not run on this TV.
 
 ---
 

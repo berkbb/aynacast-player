@@ -20,7 +20,10 @@ data class ClientMetadata(
     val resolutionWidth: Int = 1920,
     val resolutionHeight: Int = 1080,
     val fps: Int = 60,
-    val bitrateMbps: Float = 0.0f
+    val bitrateMbps: Float = 0.0f,
+    /** MediaCodec in use; empty until the first decoder starts. */
+    val decoderName: String = "",
+    val isSoftwareDecoder: Boolean = false
 )
 
 /** Track the sender is streaming (audio-only AirPlay), shown on the Now Playing screen. */
@@ -156,6 +159,10 @@ object AirPlaySessionManager {
             resolutionHeight = height,
             fps = fps
         ) }
+    }
+
+    fun setDecoder(name: String, software: Boolean) {
+        _clientMetadata.update { it.copy(decoderName = name, isSoftwareDecoder = software) }
     }
 
     fun resetToIdle() {

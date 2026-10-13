@@ -109,6 +109,11 @@ class AirPlayPlayerActivity : ComponentActivity() {
                             resolution = "${metadata.resolutionWidth}x${metadata.resolutionHeight}",
                             resolutionWidth = metadata.resolutionWidth,
                             resolutionHeight = metadata.resolutionHeight,
+                            decoderLabel = when {
+                                metadata.decoderName.isEmpty() -> ""
+                                metadata.isSoftwareDecoder -> "SW"
+                                else -> "HW"
+                            },
                             badgeText = AirPlayStrings.airplayActiveBadge(language)
                         )
                     }
@@ -169,6 +174,8 @@ fun AirPlayPlayerScreen(
     resolution: String,
     resolutionWidth: Int = 1920,
     resolutionHeight: Int = 1080,
+    // "HW" / "SW" decoder; a software decoder on a TV usually means a decoder quirk worth reporting.
+    decoderLabel: String = "",
     badgeText: String
 ) {
     var showOverlay by remember { mutableStateOf(true) }
@@ -227,7 +234,7 @@ fun AirPlayPlayerScreen(
                         fontSize = 14.sp
                     )
                     Text(
-                        text = "$resolution • ${if (fps > 0) fps else 60} FPS",
+                        text = "$resolution • ${if (fps > 0) fps else 60} FPS" + if (decoderLabel.isNotEmpty()) " • $decoderLabel" else "",
                         color = AppleTextSecondary.copy(alpha = 0.7f),
                         fontSize = 12.sp
                     )

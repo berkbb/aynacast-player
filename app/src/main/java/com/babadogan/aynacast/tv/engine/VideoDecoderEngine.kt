@@ -91,6 +91,8 @@ object VideoDecoderEngine {
     private var spsBytes: ByteArray? = null
     private var ppsBytes: ByteArray? = null
     private var useSoftwareDecoder = false
+    // Configure without the optional low-latency keys (set after the full format failed once).
+    private var useMinimalFormat = false
 
     private var streamWidth = 1920
     private var streamHeight = 1080
@@ -223,6 +225,7 @@ object VideoDecoderEngine {
                             _hasShownFrame.value = false
                             releaseCodec()
                             useSoftwareDecoder = false
+                            useMinimalFormat = false
                         }
                         task.done.countDown()
                     }
@@ -232,6 +235,7 @@ object VideoDecoderEngine {
                         ppsBytes = null
                         clearGop()
                         useSoftwareDecoder = false
+                        useMinimalFormat = false
                         Log.i(TAG, "Decoder state reset for the next session")
                     }
                     is Task.Config -> applyConfig(task.sps, task.pps)
@@ -292,45 +296,64 @@ object VideoDecoderEngine {
         val sps = spsBytes ?: return
         val pps = ppsBytes ?: return
 
+        var codec: MediaCodec? = null
         try {
             val spsPrefix = ensureAnnexBPrefix(sps)
             val ppsPrefix = ensureAnnexBPrefix(pps)
 
-            val codec = createCodec()
+            val created = createCodec()
+            codec = created
             val format = MediaFormat.createVideoFormat(MIME_TYPE, streamWidth, streamHeight).apply {
                 setByteBuffer("csd-0", ByteBuffer.wrap(spsPrefix))
                 setByteBuffer("csd-1", ByteBuffer.wrap(ppsPrefix))
                 // An uncompressed frame is a safe upper bound for any access unit (large IDRs included).
                 setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxOf(streamWidth * streamHeight * 3 / 2, 1 shl 20))
-                // Only when advertised: on Android 11 ACodec fails configure() outright if the decoder
-                // rejects it (OMX.MS.AVC.Decoder on MStar TVs), which forced the slow software decoder.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && supportsLowLatency(codec)) {
-                    setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                if (!useMinimalFormat) {
+                    // Only when advertised: on Android 11 ACodec fails configure() outright if the decoder
+                    // rejects it (OMX.MS.AVC.Decoder on MStar TVs), which forced the slow software decoder.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && supportsLowLatency(created)) {
+                        setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                    }
+                    setInteger(MediaFormat.KEY_PRIORITY, 0)
+                    // Low-latency vendor keys for MediaTek OMX and Qualcomm hardware decoders
+                    setInteger("vdec-lowlatency", 1)
+                    setInteger("vendor.rtc-ext-dec-low-latency.enable", 1)
                 }
-                setInteger(MediaFormat.KEY_PRIORITY, 0)
-                // Low-latency vendor keys for MediaTek OMX and Qualcomm hardware decoders
-                setInteger("vdec-lowlatency", 1)
-                setInteger("vendor.rtc-ext-dec-low-latency.enable", 1)
             }
 
-            codec.configure(format, surface, null, 0)
-            codec.start()
+            created.configure(format, surface, null, 0)
+            created.start()
 
-            mediaCodec = codec
+            mediaCodec = created
             frameCount = 0
             bytesDecoded = 0
             lastFpsCalculationTime = System.currentTimeMillis()
             AirPlaySessionManager.setDisplayResolution(streamWidth, streamHeight, 60)
-            Log.i(TAG, "MediaCodec started on worker thread: ${codec.name} (${streamWidth}x${streamHeight}, software=$useSoftwareDecoder)")
+            AirPlaySessionManager.setDecoder(created.name, useSoftwareDecoder)
+            Log.i(TAG, "MediaCodec started on worker thread: ${created.name} (${streamWidth}x${streamHeight}, software=$useSoftwareDecoder, minimalFormat=$useMinimalFormat)")
 
-            replayBufferedGop(codec)
+            replayBufferedGop(created)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to configure and start MediaCodec", e)
+            if (mediaCodec == null) {
+                // configure()/start() threw before the codec was adopted; free it here, or a TV with a
+                // single hardware decoder instance has none left for the retry.
+                runCatching { codec?.release() }
+            }
             releaseCodec()
-            if (!useSoftwareDecoder) {
-                Log.w(TAG, "Attempting software decoder fallback...")
-                useSoftwareDecoder = true
-                rebuildCodec()
+            when {
+                // A decoder that rejects an optional key fails configure(); try it once without them
+                // before settling for the far slower software decoder.
+                !useSoftwareDecoder && !useMinimalFormat -> {
+                    Log.w(TAG, "Retrying the hardware decoder without optional low-latency keys...")
+                    useMinimalFormat = true
+                    rebuildCodec()
+                }
+                !useSoftwareDecoder -> {
+                    Log.w(TAG, "Attempting software decoder fallback...")
+                    useSoftwareDecoder = true
+                    rebuildCodec()
+                }
             }
         }
     }
