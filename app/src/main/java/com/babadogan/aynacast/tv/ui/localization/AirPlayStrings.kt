@@ -151,6 +151,26 @@ object AirPlayStrings {
         AppLanguage.EN -> "When enabled, the service starts on TV boot and listens in the background. When disabled, it runs only while the app is active."
     }
 
+    fun discoveryRefreshTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Görünürlüğü Tazele"
+        AppLanguage.EN -> "Refresh Visibility"
+    }
+
+    fun discoveryRefreshDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Bazı TV'lerin Wi-Fi'ı, iPhone ve Mac'in \"kim var?\" sorgularını almaz; TV yalnızca açılışta görünür, telefon Wi-Fi'a yeniden bağlanınca listeden kaybolur. Açıkken TV, yayın yokken her dakika kendini yeniden duyurur. Liste açıkken TV bir anlığına kaybolup geri gelebilir."
+        AppLanguage.EN -> "Some TVs' Wi-Fi drops the \"who is there?\" queries of iPhones and Macs, so the TV only shows up right after it starts and vanishes once a phone reconnects to Wi-Fi. When on, the TV announces itself every minute while nothing is streaming; an open device list may briefly drop and re-add it."
+    }
+
+    fun discoveryRefreshOn(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Her Dakika (Önerilen)"
+        AppLanguage.EN -> "Every Minute (Recommended)"
+    }
+
+    fun discoveryRefreshOff(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kapalı"
+        AppLanguage.EN -> "Off"
+    }
+
     fun keepAliveEnabled(lang: AppLanguage): String = when (lang) {
         AppLanguage.TR -> "7/24 Arka Plan Açık (Önerilen)"
         AppLanguage.EN -> "24/7 Always Active (Recommended)"

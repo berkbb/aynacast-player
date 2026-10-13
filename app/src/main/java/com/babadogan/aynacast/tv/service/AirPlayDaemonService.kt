@@ -82,6 +82,7 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         }
         private const val RTSP_PORT = 7000
         private const val NETWORK_REFRESH_DELAY_MS = 2_000L
+        private const val DISCOVERY_REFRESH_MS = 60_000L
         private const val UNREGISTER_TIMEOUT_MS = 1_500L
         private const val START_RETRY_DELAY_MS = 5_000L
         private const val MAX_START_RETRIES = 5
@@ -115,6 +116,7 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
 
     private val startRetryRunnable = Runnable { startAirPlayServer() }
     private val networkRefreshRunnable = Runnable { refreshNsdIfNetworkChanged() }
+    private val discoveryRefreshRunnable = Runnable { refreshDiscovery() }
 
     private val language: AppLanguage
         get() = AppSettingsRepository.getInstance(this).settings.value.language
@@ -163,6 +165,16 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
                     rate = info.rate,
                     readyToPlay = info.readyToPlay
                 )
+            }
+            .launchIn(serviceScope)
+
+        // Re-announcement for TVs whose Wi-Fi drops incoming multicast (see refreshDiscovery).
+        AppSettingsRepository.getInstance(this).settings
+            .map { it.discoveryRefresh }
+            .distinctUntilChanged()
+            .onEach { enabled ->
+                mainHandler.removeCallbacks(discoveryRefreshRunnable)
+                if (enabled) mainHandler.postDelayed(discoveryRefreshRunnable, DISCOVERY_REFRESH_MS)
             }
             .launchIn(serviceScope)
 
@@ -331,6 +343,24 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
     private fun scheduleNsdRefresh() {
         mainHandler.removeCallbacks(networkRefreshRunnable)
         mainHandler.postDelayed(networkRefreshRunnable, NETWORK_REFRESH_DELAY_MS)
+    }
+
+    /**
+     * Some TVs (an Arçelik / MStar M7322 on Android 11) never receive multicast on Wi-Fi: mdnsd sends
+     * the announcements made at registration but cannot answer queries, so a phone that rejoins the
+     * network (and asks) does not find the TV. Re-registering announces it again; Apple devices cache
+     * announcements they did not ask for. Skipped while a sender is connected: it already knows the
+     * TV, and the re-registration's goodbye would only flicker its list.
+     */
+    private fun refreshDiscovery() {
+        mainHandler.removeCallbacks(discoveryRefreshRunnable)
+        if (!AppSettingsRepository.getInstance(this).settings.value.discoveryRefresh) return
+        mainHandler.postDelayed(discoveryRefreshRunnable, DISCOVERY_REFRESH_MS)
+        val publisher = nsdPublisher ?: return
+        if (AirPlaySessionManager.isStreaming.value || VideoCastSession.media.value != null) return
+        if (publishedAddresses.isEmpty()) return
+        Log.i(TAG, "Re-announcing the receiver over mDNS (visibility refresh)")
+        publisher.publish(buildServiceInfos())
     }
 
     private fun refreshNsdIfNetworkChanged() {

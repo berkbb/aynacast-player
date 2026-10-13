@@ -147,6 +147,8 @@ class AirPlaySettingsActivity : ComponentActivity() {
                         currentLanguage = appSettings.language,
                         currentTheme = appSettings.themeMode,
                         keepAliveInBackground = appSettings.keepAliveInBackground,
+                        discoveryRefresh = appSettings.discoveryRefresh,
+                        onDiscoveryRefreshChanged = { settingsRepo.setDiscoveryRefresh(it) },
                         avSyncEnabled = appSettings.avSyncEnabled,
                         pinRequired = appSettings.pinRequired,
                         pairedDeviceCount = pairedDevices.size,
@@ -268,6 +270,8 @@ fun AirPlaySettingsMainScreen(
     currentLanguage: AppLanguage,
     currentTheme: AppThemeMode,
     keepAliveInBackground: Boolean,
+    discoveryRefresh: Boolean,
+    onDiscoveryRefreshChanged: (Boolean) -> Unit,
     avSyncEnabled: Boolean,
     pinRequired: Boolean,
     pairedDeviceCount: Int,
@@ -373,6 +377,8 @@ fun AirPlaySettingsMainScreen(
                     currentLanguage = currentLanguage,
                     currentTheme = currentTheme,
                     keepAliveInBackground = keepAliveInBackground,
+                    discoveryRefresh = discoveryRefresh,
+                    onDiscoveryRefreshChanged = onDiscoveryRefreshChanged,
                     avSyncEnabled = avSyncEnabled,
                     pinRequired = pinRequired,
                     pairedDeviceCount = pairedDeviceCount,
@@ -416,6 +422,8 @@ fun SettingsTabContent(
     currentLanguage: AppLanguage,
     currentTheme: AppThemeMode,
     keepAliveInBackground: Boolean,
+    discoveryRefresh: Boolean,
+    onDiscoveryRefreshChanged: (Boolean) -> Unit,
     avSyncEnabled: Boolean,
     pinRequired: Boolean,
     pairedDeviceCount: Int,
@@ -745,6 +753,41 @@ fun SettingsTabContent(
                         text = AirPlayStrings.keepAliveDisabled(currentLanguage),
                         isSelected = !keepAliveInBackground,
                         onClick = { onKeepAliveChanged(false) }
+                    )
+                }
+            }
+        }
+
+        // mDNS re-announcement for TVs that do not receive multicast queries
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = AirPlayStrings.discoveryRefreshTitle(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 18.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = AirPlayStrings.discoveryRefreshDesc(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvChoiceChip(
+                        text = AirPlayStrings.discoveryRefreshOn(currentLanguage),
+                        isSelected = discoveryRefresh,
+                        onClick = { onDiscoveryRefreshChanged(true) }
+                    )
+                    TvChoiceChip(
+                        text = AirPlayStrings.discoveryRefreshOff(currentLanguage),
+                        isSelected = !discoveryRefresh,
+                        onClick = { onDiscoveryRefreshChanged(false) }
                     )
                 }
             }

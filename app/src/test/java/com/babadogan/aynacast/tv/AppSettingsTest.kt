@@ -59,4 +59,12 @@ class AppSettingsTest {
         assertEquals(false, AppSettings().avSyncEnabled)
         assertEquals(true, AppSettings().copy(avSyncEnabled = true).avSyncEnabled)
     }
+
+    @Test
+    fun testDiscoveryRefreshIsOnByDefault() {
+        // TVs that drop incoming multicast are only found again through the re-announcements.
+        assertEquals(true, AppSettings.DEFAULT_DISCOVERY_REFRESH)
+        assertEquals(true, AppSettings().discoveryRefresh)
+        assertEquals(false, AppSettings().copy(discoveryRefresh = false).discoveryRefresh)
+    }
 }
