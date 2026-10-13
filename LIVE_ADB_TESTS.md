@@ -430,9 +430,10 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | 7b YouTube | ✅ | |
 | 8 PIN pairing | ✅ | Pairing after removing the device; with the permission the PIN screen opens over YouTube |
 | 9 Audio/video sync (On) | ✅ | Mac mirroring: lip sync good by ear; HW decoder, avg 45 fps, no drops; old direct-AudioTrack path: 0 underruns, buffer at 600–680 of 700 ms (≈0.6 s latency), small overflow drops (13 KB at the start, then 1–3 KB now and then). If it crackles, the 700 ms track is the first thing to raise |
+| 11 Boot + persistent identity | ✅ | `BootReceiver` started the service ~45 s after boot completed (other apps' boot broadcasts first); same public key `9fd6a4ed…`; iPhone sees the TV without opening the app; the paired Mac plays without being asked for the code again |
 | 10 Background launch fallback | ✅ (fixed) | Without the permission Android aborts the start (`Abort background activity starts`) and the fallback notification is posted but **never shown**: Android TV only lists it in the notification panel. Added: a toast over the app in use (the PIN code for ~10 s, or "… is mirroring; … open AynaCast TV") and a permission dialog when the app is opened without it |
 
-Not run on this TV: 2, 5, 7c, 11, 12. Mac Music app: through "Arcelik Android TV (Mac)" (see below).
+Not run on this TV: 2, 5, 7c, 12. Mac Music app: through "Arcelik Android TV (Mac)" (see below).
 
 **Discovery:** the TV once stopped receiving any multicast/broadcast on Wi-Fi (iPhone could not see it,
 the Mac only from its cache; not even Chromecast answered queries). Turning the TV's Wi-Fi off and on
