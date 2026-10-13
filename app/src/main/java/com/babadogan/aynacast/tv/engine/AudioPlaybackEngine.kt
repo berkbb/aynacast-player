@@ -292,7 +292,8 @@ object AudioPlaybackEngine {
 
     private fun writeBuffered(data: ByteArray, length: Int) {
         if (audioTrack != null) releaseTrack() // Leaving sync mode.
-        val output = jitterOutput ?: PcmJitterOutput(sampleRate, channelCount, volumeGain).also { jitterOutput = it }
+        val output = jitterOutput ?: PcmJitterOutput(sampleRate, channelCount, volumeGain, jitterProfile())
+            .also { jitterOutput = it }
         output.write(data, length)
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastStatsAtMs >= STATS_INTERVAL_MS) {
@@ -301,6 +302,11 @@ object AudioPlaybackEngine {
             decoderInputMisses = 0
         }
     }
+
+    /** AAC-ELD is screen mirroring audio; ALAC and AAC-LC are music without a picture to match. */
+    private fun jitterProfile(): PcmJitterOutput.Profile =
+        if (codec == AirPlayAudioFormat.CODEC_AAC_ELD) PcmJitterOutput.Profile.LOW_LATENCY
+        else PcmJitterOutput.Profile.MUSIC
 
     /** When the next sample written to [track] will be heard, on the System.nanoTime() clock. */
     private fun estimateNextPlayTimeNs(track: AudioTrack): Long {

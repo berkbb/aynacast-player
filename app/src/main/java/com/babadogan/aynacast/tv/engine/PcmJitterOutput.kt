@@ -24,22 +24,34 @@ import android.util.Log
  *   that correction would take minutes to undo. When the queue never came near the target for a
  *   while, the excess is cut at once, with a short fade-in.
  * - A track that stops consuming (seen on a Philips TV) is detected and rebuilt.
+ *
+ * Only the queue depends on [profile]; the AudioTrack is the same small, always-full buffer.
  */
 internal class PcmJitterOutput(
     private val sampleRate: Int,
     private val channelCount: Int,
-    initialVolume: Float
+    initialVolume: Float,
+    private val profile: Profile = Profile.LOW_LATENCY
 ) {
+    /** Queue target bounds (ms): where it starts, and how far refills and quiet periods move it. */
+    enum class Profile(val startMs: Int, val minMs: Int, val maxMs: Int) {
+        // Screen mirroring: the picture is shown at once, so audio latency is lip-sync error.
+        LOW_LATENCY(startMs = 120, minMs = 60, maxMs = 400),
+        // Music has no picture to match: start deep enough for the iPhone's Wi-Fi gaps (up to ~410 ms
+        // measured) instead of growing into them with a refill pause each.
+        MUSIC(startMs = 400, minMs = 400, maxMs = 800)
+    }
+
     private val frameBytes = channelCount * BYTES_PER_SAMPLE
     private val chunkFrames = sampleRate * CHUNK_MS / 1000
 
     private val lock = Object()
     // Ring buffer of PCM; guarded by [lock].
-    private val ring = ByteArray(bytesForMillis(MAX_QUEUE_MS + MAX_TARGET_MS))
+    private val ring = ByteArray(bytesForMillis(MAX_QUEUE_MS + profile.maxMs))
     private var readPos = 0
     private var queued = 0
     private var buffering = true
-    private var targetMs = START_TARGET_MS
+    private var targetMs = profile.startMs
     private var lastRebufferAtMs = SystemClock.elapsedRealtime()
     private var lastTargetDecayAtMs = lastRebufferAtMs
     // Lowest queue level since [windowStartMs], for the latency trim.
@@ -182,7 +194,7 @@ internal class PcmJitterOutput(
                 buffering = true
                 rebuffers++
                 val now = SystemClock.elapsedRealtime()
-                targetMs = minOf(targetMs + TARGET_STEP_UP_MS, MAX_TARGET_MS)
+                targetMs = minOf(targetMs + TARGET_STEP_UP_MS, profile.maxMs)
                 lastRebufferAtMs = now
                 lastTargetDecayAtMs = now
                 return 0
@@ -261,7 +273,7 @@ internal class PcmJitterOutput(
     private fun decayTarget() {
         val now = SystemClock.elapsedRealtime()
         if (now - lastRebufferAtMs < TARGET_DECAY_QUIET_MS || now - lastTargetDecayAtMs < TARGET_DECAY_QUIET_MS) return
-        targetMs = maxOf(targetMs - TARGET_STEP_DOWN_MS, MIN_TARGET_MS)
+        targetMs = maxOf(targetMs - TARGET_STEP_DOWN_MS, profile.minMs)
         lastTargetDecayAtMs = now
     }
 
@@ -329,9 +341,6 @@ internal class PcmJitterOutput(
         const val BYTES_PER_SAMPLE = 2
         const val CHUNK_MS = 10
         const val TRACK_BUFFER_MS = 40
-        const val START_TARGET_MS = 120
-        const val MIN_TARGET_MS = 60
-        const val MAX_TARGET_MS = 400
         const val TARGET_STEP_UP_MS = 40
         const val TARGET_STEP_DOWN_MS = 10
         const val TARGET_DECAY_QUIET_MS = 30_000L

@@ -353,7 +353,8 @@ sender's clock drift either.
 
 **Fix (`PcmJitterOutput`, default mode only):** the network thread appends decoded PCM to a queue; a
 writer thread feeds a small `AudioTrack` with blocking writes, so the TV's clock paces playback. The
-queue level adapts (starts at 120 ms, +40 ms per refill, −10 ms per 30 quiet seconds), drift is
+queue level adapts (+40 ms per refill, −10 ms per 30 quiet seconds; screen mirroring audio (AAC-ELD)
+60–400 ms starting at 120 ms, music (ALAC / AAC-LC) 400–800 ms starting at 400 ms), drift is
 corrected one sample frame per 10 ms chunk, extra latency left by refill pauses is cut after 2 s
 (5 ms fade-in), and an output that stops consuming is rebuilt. The timestamp-sync mode keeps its
 own path.
@@ -413,7 +414,7 @@ last column.
 | 4c | – Wi-Fi gaps (`max arrival gap`) | Usually ~80 ms, peaks 190–335 ms | Peaks: |
 | 4d | – output stall (`Audio output stalled`) | Never | Seen? Sound after 1+ minute? (the earlier 400 ms attempt froze here) |
 | 4e | – track start (Android 8 starts an `AudioTrack` only once its buffer is full) | – | Sound starts at once? |
-| 4f | – iPhone Apple Music (ALAC, Test 6) | Plays well; 6 refills in the first ~30 s (target 120 → 360 ms, Wi-Fi gaps up to 414 ms), then no loss | Refills / crackle: |
+| 4f | – iPhone Apple Music (ALAC, Test 6) | Music profile (target starts at 400 ms): 1 refill in the first ~30 s (Wi-Fi gaps up to 488 ms), then no loss. With the mirroring profile it had 6 | Refills / crackle: |
 
 **Command for the audio numbers:**
 `grep "Audio output" tv-logs/<test>.log` – one line every 5 seconds.
