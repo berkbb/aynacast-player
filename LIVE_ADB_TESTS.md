@@ -420,6 +420,9 @@ crashes) during 30 min of mirroring + 30 min of music with the loop in Test 12.
 
 Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 Hz) · MacBook Air · iPhone
 
+Build: 1.3.0 (versionCode 3) as of the end of the run; earlier steps ran on the intermediate builds
+named in each row.
+
 | Test | Result | Notes |
 |------|--------|-------|
 | 1 Installation and service | ✅ | Release APK (armeabi-v7a) |

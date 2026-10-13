@@ -21,7 +21,7 @@
     <string name="lang_ro">Rumence</string>
 
     <!-- About & Legal Info Strings -->
-    <string name="about_version">Sürüm: v1.0.0</string>
+    <string name="about_version">Sürüm: v1.3.0</string>
     <string name="about_architecture_title">Mimari Tasarım</string>
     <string name="about_architecture_desc">Arka Plan Daemon Servisi (Foreground Daemon) + İhtiyaç Anında Açılan Compose TV Arayüzü (On-Demand UI).</string>
     <string name="about_protocols_title">Desteklenen Protokoller ve Motorlar</string>

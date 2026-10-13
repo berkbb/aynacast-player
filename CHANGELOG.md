@@ -9,9 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-13
+
 ### Known issues
-- **Audio crackle in the first ~15 s:** Mac mirroring (AAC-ELD) and iPhone music (ALAC) underrun and overflow the 171 ms `AudioTrack` buffer while packets arrive in bursts at the start of a stream; it clears up afterwards. Two buffering fixes were reverted (Android 8 only starts a track once its buffer is full, and the TV's output once stopped consuming audio). Details and measurements in `LIVE_ADB_TESTS.md` → "Known open issues".
-- **Long-run test (Test 12) not done yet:** only an idle baseline exists (0% CPU, ~33 MB PSS, no crashes); 30 min mirroring + 30 min music with periodic memory/CPU samples is still to be run.
+- **macOS Music app needs its own entry:** to the main receiver it only offers FairPlay version 2, which no open-source receiver can implement (UxPlay #570). The TV therefore also advertises a classic AirPlay speaker, **"<TV name> (Mac)"**, which the Mac uses with RSA; Macs (and iPhones, in their speaker list) see two entries.
+- **Mac PIN is weaker than iPhone pairing:** a Mac enters the on-screen code as an HTTP Digest password and is then remembered by its `DACP-ID`, which another LAN host could reuse.
+- **Mac Music artwork:** the Mac sometimes sends an empty image for the first song and nothing later; the next song's artwork arrives.
+- **TVs whose Wi-Fi drops incoming multicast** (seen on an Arçelik / MStar M7322, Android 11) cannot answer discovery queries; the TV relies on its announcements. "Refresh Visibility" (on by default) re-announces every minute while idle, so a phone that rejoined Wi-Fi finds it within ~30–60 s; an open device list may briefly drop and re-add the TV.
+- **Safari videos while screen mirroring is on:** iOS treats the cast as a temporary hand-off and may end it after a few seconds and return to mirroring; stop mirroring first.
+- **Timestamp sync mode** (off by default) still plays mirroring audio through the older direct `AudioTrack` path (≈0.6 s buffer, small overflow drops).
+- **Android 8 not re-verified:** the audio jitter buffer, the Mac entry and the toast fallback were developed and measured on Android 11 (Arçelik); the Philips (Android 8) comparison is pending (`LIVE_ADB_TESTS.md`).
+- **Long-run test (Test 12) not done yet.**
+
+### Added
+- **macOS Music app support** through a classic AirPlay (RAOP) speaker entry "<name> (Mac)": RSA `Apple-Challenge` signing and `rsaaeskey` unwrapping with the AirPort Express key (`AirPortRsa`), SDP `ANNOUNCE`, `Transport` `SETUP`; ALAC, NTP and the jitter buffer are shared with the other paths. With the PIN on, the Mac is asked for the on-screen code as its password and remembered in the paired devices list.
+- **Audio jitter buffer** (`PcmJitterOutput`): decoded audio is queued and fed to a small `AudioTrack` by its own thread with blocking writes, so Wi-Fi bursts no longer overflow the track and the gaps after them no longer drain it. Adaptive target (mirroring 120 ms start, music 400 ms), one-frame drift correction, latency trim after refill pauses, stalled-output recovery.
+- **Refresh Visibility** setting (on by default): re-registers the mDNS records every 60 s while nothing is streaming.
+- **Romanian** app language (all texts, resources and date formats), alongside Turkish and English.
+- **Background launch fallback that is visible on TVs:** without "Display over other apps" a toast shows the PIN code or says that the screen could not come to the front; the app asks for the permission when it is opened.
+- **Decoder indicator:** the player's info box ends in `HW` or `SW`.
+- **Diagnostics:** remote key codes, sender rate commands and the playing/paused events sent to the sender are logged; a rejected FairPlay key message logs its version.
+
+### Fixed
+- **Mirroring lag on MStar/MediaTek TVs (Android 11):** `KEY_LOW_LATENCY` made `OMX.MS.AVC.Decoder` fail `configure()` and the slow software decoder took over (~40 fps, hundreds of dropped frames a minute); it is now only requested from decoders that advertise it, and a failing hardware decoder is retried without optional keys (and released) before the software fallback.
+- **Constant audio crackle** with Mac mirroring and iPhone music (see the jitter buffer above).
+- **Classic AirPlay sessions ended after 15 s:** they send no `/feedback`; they now live on audio packets (120 s silence limit).
+- **Language buttons** did not fit three languages; theme names were Turkish-or-English only.
 
 ### Added
 - **Screen transitions:** opening and closing status cards with window animations for mirroring, video casting and PIN; a closing card is not covered by the next screen.

@@ -47,7 +47,7 @@ Built on a two-tier architecture:
 ┌────────────────────────────────────────┐      ┌────────────────────────────────────────┐
 │  Hardware MediaCodec (AVC / H.264)     │      │  Low-Latency AudioTrack                │
 │  • SPS / PPS injection (csd-0, csd-1)  │      │  • 44.1 kHz, 16-bit PCM, Stereo       │
-│  • KEY_LOW_LATENCY = 1, Real-Time Prio │      │  • PERFORMANCE_MODE_LOW_LATENCY        │
+│  • KEY_LOW_LATENCY when supported      │      │  • Jitter buffer + writer thread       │
 │  • Zero-copy Direct Hardware Render    │      │  • USAGE_MEDIA & AudioFocus transient  │
 └────────────────────────────────────────┘      └────────────────────────────────────────┘
 ```
@@ -57,9 +57,9 @@ Built on a two-tier architecture:
 ## ✨ Key Features
 
 - **Dynamic Device Identity:** Automatically resolves and broadcasts the TV's real human-readable system name (`Settings.Global.device_name`, Bluetooth name, or Model) rather than a generic hardcoded label.
-- **Bilingual Multiplatform Localization (TR / EN):**
+- **Localization (TR / EN / RO):**
   - **Turkish (Default):** First-class native Turkish user interface and strings.
-  - **English (Secondary):** Complete English localization with verified 1:1 parity tested by unit tests.
+  - **English and Romanian:** Complete localizations with 1:1 key parity verified by unit tests.
 - **Full Theme Mode Support (System / Dark / Light):**
   - **System (Default):** Follows the Android TV system appearance setting.
   - **Dark:** OLED/TV-optimized deep black theme.
@@ -69,12 +69,15 @@ Built on a two-tier architecture:
   - **Settings Window (`AirPlaySettingsActivity`):** Live service indicator, D-Pad focused controls, appearance selection, language picker, and instructions.
   - **About Window:** Application version, architecture overview, supported network protocols, developer attribution, and legal notice.
 - **TV D-Pad Remote Focus:** Animated high-contrast borders and color shifts when navigating with a television remote control.
-- **Mirrored Audio:** AAC-ELD (screen mirroring) and AAC-LC audio decoded with `MediaCodec`, ALAC decoded natively; sender volume is applied. Out-of-order packets are reordered and lost ones are requested again from the sender.
+- **Mirrored Audio:** AAC-ELD (screen mirroring) and AAC-LC audio decoded with `MediaCodec`, ALAC decoded natively; sender volume is applied. Out-of-order packets are reordered and lost ones are requested again from the sender. A jitter buffer with its own writer thread absorbs Wi-Fi bursts and clock drift (≈0.35 s for mirroring, deeper for music).
+- **macOS Music app:** besides the main receiver the TV advertises a classic AirPlay speaker, **"<TV name> (Mac)"**, which the Music app streams to with RSA (the main receiver only gets FairPlay 2 from it, which cannot be implemented).
 - **UxPlay-compatible protocol behaviour:** NTP timing with the sender, verified pair-verify signatures, `txtAirPlay` info replies, per-stream `TEARDOWN`, and an optional timestamp audio/video sync (UxPlay `-vsync`; off by default for the lowest latency, as UxPlay recommends for macOS mirroring and hardware decoding).
 - **Audio-only AirPlay:** Music streamed to the TV shows an Apple TV-like Now Playing screen (cover art, title, artist, progress); Back keeps it playing in the background.
 - **Video casting:** An app's AirPlay button (Safari, YouTube and most video apps) can send its video to the TV instead of mirroring the screen; it plays in a Media3/ExoPlayer player controlled from the iPhone or the TV remote. DRM-protected services (Netflix, Apple TV+, Disney+) are not supported by design.
-- **On-screen PIN (optional):** A 4-digit code can be required the first time a device connects; paired devices are remembered.
-- **Auto-Open on Android 10+:** The settings screen offers the "Display over other apps" permission that Android 10+ requires for the player to open by itself; without it a notification opens the mirrored screen.
+- **On-screen PIN (optional):** A 4-digit code can be required the first time a device connects; paired devices are remembered. A Mac using the "(Mac)" entry types the code into its password prompt.
+- **Auto-Open on Android 10+:** The app asks for the "Display over other apps" permission that Android 10+ requires for the player to open by itself; without it a toast over the current app shows the PIN code or says to open AynaCast TV.
+- **Refresh Visibility:** re-announces the receiver every minute while idle, for TVs whose Wi-Fi drops incoming multicast (otherwise a phone that rejoined Wi-Fi cannot find them).
+- **Hardware decoder first:** low-latency keys are only requested from decoders that support them, a failing hardware decoder is retried before the software fallback, and the player shows `HW` / `SW`.
 - **Zero-Warning Clean Build:** Fully compliant with Android 14/15/16 SDK guidelines, deprecation-free modern APIs (`BluetoothManager`, `WIFI_MODE_FULL_LOW_LATENCY`, `POST_NOTIFICATIONS`).
 
 ---
@@ -85,11 +88,11 @@ The automated packaging engine produces both universal and split-architecture bu
 
 | Package | Target | Size | Description |
 | :--- | :--- | :---: | :--- |
-| `AynaCastTV-v1.0.0-universal.apk` | Universal | ~12 MB | Single APK containing `arm64-v8a`, `armeabi-v7a`, and `x86_64`. |
-| `AynaCastTV-v1.0.0-arm64-v8a.apk` | 64-bit ARM | ~9.5 MB | Optimized for modern 64-bit Android TV & Google TV devices. |
-| `AynaCastTV-v1.0.0-armeabi-v7a.apk` | 32-bit ARM | ~9.0 MB | Optimized for legacy 32-bit Android TV boxes and sticks. |
-| `AynaCastTV-v1.0.0-x86_64.apk` | 64-bit x86 | ~9.5 MB | Optimized for Android TV emulators and Intel/AMD hardware. |
-| `AynaCastTV-v1.0.0-release.aab` | Google Play | ~11 MB | Official Android App Bundle for Google Play Console distribution. |
+| `AynaCastTV-v1.3.0-universal.apk` | Universal | ~12 MB | Single APK containing `arm64-v8a`, `armeabi-v7a`, and `x86_64`. |
+| `AynaCastTV-v1.3.0-arm64-v8a.apk` | 64-bit ARM | ~9.5 MB | Optimized for modern 64-bit Android TV & Google TV devices. |
+| `AynaCastTV-v1.3.0-armeabi-v7a.apk` | 32-bit ARM | ~9.0 MB | Optimized for legacy 32-bit Android TV boxes and sticks. |
+| `AynaCastTV-v1.3.0-x86_64.apk` | 64-bit x86 | ~9.5 MB | Optimized for Android TV emulators and Intel/AMD hardware. |
+| `AynaCastTV-v1.3.0-release.aab` | Google Play | ~11 MB | Official Android App Bundle for Google Play Console distribution. |
 
 ---
 
@@ -121,19 +124,34 @@ Double-click [`AynaCastTV-Package.command`](AynaCastTV-Package.command) in the p
 ## 🧪 Unit Tests
 
 This project includes verified unit tests ensuring zero regressions:
-- **`AirPlayStringsTest`:** Validates non-blank strings, bilingual distinctiveness, and 1:1 XML resource matching between Turkish and English.
+- **`AirPlayStringsTest`:** Validates non-blank strings, language distinctiveness, and 1:1 XML resource matching between Turkish, English and Romanian.
+- **`AirPortRsaTest`:** Classic AirPlay RSA: OAEP key unwrapping against the JVM's OAEP and challenge signatures checked with the public key.
 - **`AppSettingsTest`:** Validates default language (Turkish), default theme (System), and parsing rules.
 - **`DeviceIdentityHelperTest`:** Validates MAC formatting, placeholder-MAC rejection, derived device IDs and mDNS name length limits.
 - **`AirPlayAudioFormatTest`:** Validates AAC-ELD / AAC-LC AudioSpecificConfig bytes and AirPlay volume mapping.
 - **`H264SpsParserTest`:** Validates SPS resolution parsing (cropping, emulation-prevention bytes).
 - **`AvSyncTest`, `PinPairingServerTest`, `AirPlayFeaturesTest`, `DnsTxtRecordTest`:** A/V sync latency rules, SRP/GCM PIN pairing against independent vectors, advertised feature bits and TXT encoding.
 - **`VideoCastSessionTest`:** Video casting state: a closing player cannot stop or report for the cast that replaced it, and sender seeks/rates sent before the player exists are kept.
-- **Native host tests (`tools/native-host-tests/run.sh`):** Drive the C++ AirPlay core over real sockets under AddressSanitizer/UBSan (126 checks: protocol, audio/video, video casting, PIN pairing, session ownership, hostile input).
+- **Native host tests (`tools/native-host-tests/run.sh`):** Drive the C++ AirPlay core over real sockets under AddressSanitizer/UBSan (154 checks: protocol, audio/video, video casting, PIN pairing, classic AirPlay (RSA / Digest PIN), session ownership, hostile input).
 
 Run all tests via:
 ```bash
 ./gradlew test
 ```
+
+---
+
+## ⚠️ Known Issues
+
+- **Two entries on the Mac:** the macOS Music app cannot use the main receiver (it only offers FairPlay 2 there), so the TV also appears as **"<TV name> (Mac)"**; pick that one in the Music app. iPhones list it as an extra speaker.
+- **Mac PIN:** a Mac types the on-screen code as a password and is then remembered by its `DACP-ID`; this is weaker than the iPhone's SRP pairing (another LAN host could reuse a seen ID).
+- **Some TVs do not hear discovery queries** (Wi-Fi drops incoming multicast; seen on an Arçelik / MStar M7322, Android 11). Keep "Refresh Visibility" on: a phone that rejoined Wi-Fi then finds the TV within about a minute. Turning the TV's Wi-Fi off and on can also help.
+- **Safari videos while mirroring:** with screen mirroring on, iOS may end a Safari video cast after a few seconds and go back to mirroring; stop mirroring first and use the AirPlay button in the video.
+- **Audio latency:** clean audio needs ≈0.35 s of buffering on a Wi-Fi TV, so lips can trail slightly in mirroring; the optional timestamp sync mode delays the picture instead (it still uses the older audio path).
+- **Mac Music artwork** can be missing for the first song (the Mac sends an empty image); the next song's appears.
+- **DRM:** Netflix, Apple TV+, Disney+ and other FairPlay-protected videos are not supported by design; the TV shows "This video is protected".
+- **Android 10+ without "Display over other apps":** screens cannot open over another app; a toast tells you to open AynaCast TV.
+- Not yet verified: the 1.3.0 audio and Mac changes on Android 8, and a long (30 min+) run. Details and measurements: [`LIVE_ADB_TESTS.md`](LIVE_ADB_TESTS.md), [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 

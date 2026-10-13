@@ -53,7 +53,10 @@ jetpack_compose_airplay/
 │   │   │   ├── AirPlayNativeBridge.kt    # JNI interface and listener signatures
 │   │   │   ├── VideoDecoderEngine.kt     # Low-latency MediaCodec AVC decoder (KEY_LOW_LATENCY, GOP replay)
 │   │   │   ├── H264SpsParser.kt          # SPS resolution parser (pure Kotlin, unit tested)
-│   │   │   ├── AudioPlaybackEngine.kt    # AAC-ELD / AAC-LC MediaCodec decoding + AudioTrack output
+│   │   │   ├── AudioPlaybackEngine.kt    # AAC-ELD / AAC-LC MediaCodec decoding, routes PCM to the output
+│   │   │   ├── PcmJitterOutput.kt        # Jitter buffer + writer thread feeding a small AudioTrack
+│   │   │   ├── AirPortRsa.kt             # Classic AirPlay RSA (AirPort Express key): challenge, rsaaeskey
+│   │   │   ├── AirPlayFeatures.kt        # Advertised AirPlay feature bits
 │   │   │   ├── AirPlayAudioFormat.kt     # AudioSpecificConfig builder & volume mapping (unit tested)
 │   │   │   └── AvSync.kt                 # Optional timestamp A/V sync (UxPlay -vsync equivalent)
 │   │   ├── service/
@@ -62,12 +65,13 @@ jetpack_compose_airplay/
 │   │   ├── session/
 │   │   │   └── AirPlaySessionManager.kt  # Reactive StateFlow session metrics & coordinator
 │   │   ├── settings/
-│   │   │   └── AppSettingsRepository.kt  # Persistent language and theme storage
+│   │   │   └── AppSettingsRepository.kt  # Persistent settings (language, theme, PIN, sync, visibility refresh, ...)
 │   │   ├── ui/
 │   │   │   ├── AirPlayPlayerActivity.kt  # Full-screen SurfaceView on-demand playback activity
 │   │   │   ├── AirPlaySettingsActivity.kt# Settings & About tabs with TV D-Pad focus controls
+│   │   │   ├── OverlayPermissionDialog.kt# "Display over other apps" prompt on launch (Android 10+)
 │   │   │   ├── localization/
-│   │   │   │   └── AirPlayStrings.kt     # Typed bilingual catalog (Turkish default, English secondary)
+│   │   │   │   └── AirPlayStrings.kt     # Typed catalog: Turkish (default), English, Romanian
 │   │   │   └── theme/                    # Material 3 TV themes (System, Dark, Light)
 │   │   └── util/
 │   │       ├── DeviceIdentityHelper.kt   # Dynamic TV system name & MAC address resolution
@@ -77,6 +81,7 @@ jetpack_compose_airplay/
 │   │
 │   └── src/test/java/com/babadogan/aynacast/tv/ # Unit tests verifying bilingual parity and models
 │       ├── AirPlayStringsTest.kt
+│       ├── AirPortRsaTest.kt
 │       ├── AirPlayAudioFormatTest.kt
 │       ├── AppSettingsTest.kt
 │       ├── DeviceIdentityHelperTest.kt
@@ -98,7 +103,13 @@ The application advertises two DNS-SD service types on port 7000 via Android's `
    - `deviceid=<Hardware MAC>`
 2. `_raop._tcp`: Remote Audio Output Protocol service.
    - Service name: `<MAC_NO_COLONS>@<TV_DEVICE_NAME>`
-   - `sr=44100`, `ss=16`, `ch=2`, `tp=UDP`
+   - `sr=44100`, `ss=16`, `ch=2`, `tp=UDP`, `et=0,3,5`
+3. `_raop._tcp` classic speaker for the macOS Music app: `<MAC with the last bit flipped>@<TV_DEVICE_NAME> (Mac)`,
+   `et=0,1 ek=1` (RSA only), `pw=true` when the PIN is on. With the records above the Music app only offers FairPlay 2;
+   its own MAC keeps macOS from merging it into the main receiver.
+
+With "Refresh Visibility" on (default), the records are re-registered every 60 s while nothing is streaming, for TVs
+whose Wi-Fi drops incoming multicast (mdnsd can then announce but never answer queries).
 
 ### B. RTSP Handshake Flow
 When an Apple client connects to TCP port 7000, the C++ engine processes:
@@ -111,7 +122,8 @@ When an Apple client connects to TCP port 7000, the C++ engine processes:
 - PIN pairing (`/pair-pin-start`, `/pair-setup-pin`): SRP-6a (SHA-1, RFC 5054 2048-bit group, Apple's 40-byte session key) and AES-128-GCM key exchange in `PinPairingServer.kt`; in PIN mode pair-verify only admits remembered devices.
 - Now playing: `SET_PARAMETER` with `application/x-dmap-tagged` (title/artist/album), `image/jpeg|png` (cover art) and `progress:` feeds the Now Playing screen.
 - Audio RTP: packets are reordered in a 256-slot buffer; a gap triggers one retransmission request (`0x80 0xD5`) to the sender's control port, retransmissions (`0x56`) fill it, and a missing run is skipped after 60 ms so playback never stalls.
-- `POST /fp-setup`: Simulates FairPlay key derivation phase 1/2 (the phase-2 mode byte must be 0–3).
+- `POST /fp-setup`: Simulates FairPlay key derivation phase 1/2 (the phase-2 mode byte must be 0–3). Only FairPlay version 3 is implemented; the macOS Music app's version 2 is rejected (logged with its version byte).
+- Classic AirPlay (the "(Mac)" entry): any request with `Apple-Challenge` gets an `Apple-Response` (RSA PKCS#1 signature over challenge + receiver IP + MAC, padded to 32 bytes, done in Kotlin `AirPortRsa` via JNI); `ANNOUNCE` carries an SDP (`a=rtpmap:96 AppleLossless`, `a=fmtp`, `a=rsaaeskey` RSA-OAEP, `a=aesiv`); `SETUP` with a `Transport` header (sender control/timing ports) is answered with the receiver's ports and starts NTP and ALAC; the audio key is used as is (no pair-verify hashing). With the PIN on, `ANNOUNCE` gets `401` with an HTTP Digest challenge (realm `raop`) and `PinPairingManager.checkClassicDigest` verifies the on-screen code. Classic senders send no `/feedback`, so their session ends after 120 s without requests or audio.
 - Handshake state (pair-verify ECDH secret and signature keys, FairPlay key message) is kept per RTSP connection and forgotten when it closes; the session keys are derived from the handshake of the connection that sends the session `SETUP`.
 - Session ownership: the connection that sends the session `SETUP` (the one carrying `ekey`/`timingPort`) owns the session. Other connections get `409 Conflict` for `SETUP` streams, `RECORD`, `TEARDOWN`, `SET_PARAMETER`, `GET_PARAMETER`, `FLUSH` and `PAUSE`; a new session `SETUP` from another connection takes the session over and shuts the old connection down (Apple TV / UxPlay `-nohold` behaviour). A connection that sends a stream `SETUP` or `RECORD` while no session exists becomes the owner. With PIN pairing on, every `SETUP` and `RECORD` requires a completed pair-verify on that connection (`470` otherwise). The mirroring video port only accepts a connection from the IP of an established session.
 - Limits: 32 open connections, 8 MB request bodies, idle connections closed after 120 s unless they own the session, belong to video casting or come from the session sender's IP; binary plists are parsed with an object-visit cap and a copy budget (4× the document + 1 MB).
@@ -123,23 +135,26 @@ When an Apple client connects to TCP port 7000, the C++ engine processes:
 ### C. Video Pipeline
 - Input: H.264 NAL units (AVCC length-prefixed or raw stream).
 - Parsing: `h264_stream_parser.cpp` inspects NAL headers, extracts SPS (`type 7`) and PPS (`type 8`), and wraps payloads in standard Annex B start codes (`0x00000001`).
-- Hardware Decoding: `VideoDecoderEngine.kt` injects SPS/PPS as `csd-0` and `csd-1` into Android `MediaCodec` configured with `KEY_LOW_LATENCY = 1` and `KEY_PRIORITY = 0`. Buffers are rendered directly to `SurfaceView`.
+- Hardware Decoding: `VideoDecoderEngine.kt` injects SPS/PPS as `csd-0` and `csd-1` into Android `MediaCodec` with `KEY_PRIORITY = 0` and vendor low-latency keys; `KEY_LOW_LATENCY` only when the decoder advertises `FEATURE_LowLatency` (on Android 11 a decoder that rejects it fails `configure()`). A failing hardware decoder is retried once without the optional keys before the software fallback. Frames go through `GlVideoRenderer` (letterboxing) to the `SurfaceView`.
+
+### D. Audio Output
+Decoded PCM goes to `PcmJitterOutput`: the network thread appends to a queue, a writer thread feeds a small `AudioTrack` with blocking writes (the TV's clock paces playback). The queue target adapts (+40 ms per refill, −10 ms per quiet 30 s; mirroring 60–400 ms starting at 120 ms, music 400–800 ms), drift is corrected one sample frame per 10 ms chunk, extra latency from refill pauses is trimmed after 2 s, and a stalled output is rebuilt. Mirroring audio in timestamp-sync mode still uses the direct `AudioTrack` path in `AudioPlaybackEngine`.
 
 ---
 
 ## 4. Localization Standards (1:1 Parity)
 
-This project strictly enforces **Turkish as the Default Language** and **English as the Secondary Language**.
+This project uses **Turkish as the Default Language**, with **English** and **Romanian** alongside.
 
 When adding a new user-facing string:
-1. Add a method in [`AirPlayStrings.kt`](app/src/main/java/com/babadogan/aynacast/tv/ui/localization/AirPlayStrings.kt) with explicit branches for `AppLanguage.TR` and `AppLanguage.EN`.
+1. Add a method in [`AirPlayStrings.kt`](app/src/main/java/com/babadogan/aynacast/tv/ui/localization/AirPlayStrings.kt) with an exhaustive `when (lang)` (`TR`, `EN`, `RO`); no `if (lang == TR) … else …` shortcuts, so the compiler flags a missing language.
 2. Add corresponding XML entries in:
    - `app/src/main/res/values/strings.xml` (Turkish)
    - `app/src/main/res/values-en/strings.xml` (English)
+   - `app/src/main/res/values-ro/strings.xml` (Romanian)
 3. Run `./gradlew test`. The `AirPlayStringsTest` will automatically fail if:
-   - Any key is missing from either language.
    - Any key returns a blank or empty string.
-   - Any XML resource is not mirrored 1:1 between `values/` and `values-en/`.
+   - Any XML resource is not mirrored 1:1 between `values/`, `values-en/` and `values-ro/`.
 
 ---
 
@@ -153,7 +168,8 @@ Run the test suite using Gradle:
 Native AirPlay core (C++) regression tests run on the development machine with AddressSanitizer/UBSan.
 They build the core for the host and drive it over real sockets like an Apple sender (split and pipelined
 RTSP requests, SETUP/TEARDOWN plists, AAC/ALAC audio routing, dropped connections, shutdown with live clients,
-session ownership and takeover, PIN gate, video casting / FCUP ordering, hostile plists, connection limits):
+session ownership and takeover, PIN gate, video casting / FCUP ordering, classic AirPlay RSA/SDP/Transport
+and its Digest PIN, hostile plists, connection limits):
 ```bash
 ./tools/native-host-tests/run.sh
 ```
@@ -179,8 +195,8 @@ The automated release workflow compiles both universal and split APKs alongside 
 ```
 
 Output directory: `dist/`
-- `AynaCastTV-v1.0.0-universal.apk` (All architectures)
-- `AynaCastTV-v1.0.0-arm64-v8a.apk` (ARM64 only)
-- `AynaCastTV-v1.0.0-armeabi-v7a.apk` (ARM7 only)
-- `AynaCastTV-v1.0.0-x86_64.apk` (x86_64 only)
-- `AynaCastTV-v1.0.0-release.aab` (Google Play Bundle)
+- `AynaCastTV-v1.3.0-universal.apk` (All architectures)
+- `AynaCastTV-v1.3.0-arm64-v8a.apk` (ARM64 only)
+- `AynaCastTV-v1.3.0-armeabi-v7a.apk` (ARM7 only)
+- `AynaCastTV-v1.3.0-x86_64.apk` (x86_64 only)
+- `AynaCastTV-v1.3.0-release.aab` (Google Play Bundle)
