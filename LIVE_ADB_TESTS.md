@@ -395,6 +395,7 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | Test | Result | Notes |
 |------|--------|-------|
 | 1 Installation and service | ✅ | Release APK (armeabi-v7a) |
+| 3 iPhone mirroring | ✅ | Hardware decoder, portrait 500x1080, avg 47 fps (min 30), up to 5.6 Mbps, no drops; lock/unlock pauses and resumes. A YouTube video started during mirroring is handed over to video casting and plays fine. Mirroring **audio** from the iPhone not checked (same AAC-ELD path as the Mac) |
 | 4 Mac mirroring | ✅ | Fixed: `OMX.MS.AVC.Decoder` rejects `KEY_LOW_LATENCY`, Android 11 then fails `configure()` and the software decoder (~40 fps, 467 dropped frames per minute) lagged visibly. Now hardware, 42–60 fps at 2–3 Mbps, no drops. Fixed: constant audio crackle (jitter buffer, see the audio issue above) |
 | 6 Music + Now Playing | ✅ | Apple Music (ALAC) through the jitter buffer, see 4f below |
 | 7a Safari / URL video | ✅ / ⚠️ | Remote play/pause (`KEYCODE_MEDIA_PLAY_PAUSE`, scan 164) and OK reach the player and are reported to the iPhone; iPhone pause/play is followed. Started from Safari, the iPhone keeps a screen mirroring session open and several times ended the cast itself after 6–24 s (`/rate 0` + `/stop`, then mirroring again) while the TV was playing normally |
@@ -402,7 +403,7 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | 8 PIN pairing | ✅ | Pairing after removing the device; with the permission the PIN screen opens over YouTube |
 | 10 Background launch fallback | ✅ (fixed) | Without the permission Android aborts the start (`Abort background activity starts`) and the fallback notification is posted but **never shown**: Android TV only lists it in the notification panel. Added: a toast over the app in use (the PIN code for ~10 s, or "… is mirroring; … open AynaCast TV") and a permission dialog when the app is opened without it |
 
-Not run on this TV: 2, 3, 5, 7c, 9, 11, 12.
+Not run on this TV: 2, 5, 7c, 9, 11, 12.
 
 **Discovery:** the TV once stopped receiving any multicast/broadcast on Wi-Fi (iPhone could not see it,
 the Mac only from its cache; not even Chromecast answered queries). Turning the TV's Wi-Fi off and on
