@@ -149,9 +149,9 @@ class AirPlayStringsTest {
 
     @Test
     fun testLicenseTextMatchesRepositoryLicense() {
-        // The repository ships under the MIT license (see LICENSE); the About screen must say so.
+        // The repository ships under the GPL-3.0 (see LICENSE; required by the bundled playfair code); the About screen must say so.
         for (lang in AppLanguage.entries) {
-            assertTrue(AirPlayStrings.aboutLicenseDesc(lang).contains("MIT"))
+            assertTrue(AirPlayStrings.aboutLicenseDesc(lang).contains("GPL-3.0"))
             assertFalse(AirPlayStrings.aboutLicenseDesc(lang).contains("Apache"))
         }
     }

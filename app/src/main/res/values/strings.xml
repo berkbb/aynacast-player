@@ -29,7 +29,7 @@
     <string name="about_developer_title">Geliştirici ve Telif</string>
     <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara Üniversitesi Teknokent</string>
     <string name="about_license_title">Lisans</string>
-    <string name="about_license_desc">MIT Açık Kaynak Lisansı ile lisanslanmıştır.</string>
+    <string name="about_license_desc">GNU Genel Kamu Lisansı v3.0 (GPL-3.0) ile lisanslanmıştır.</string>
     <string name="about_disclaimer_title">Yasal Uyarı ve Marka Bildirimi</string>
     <string name="about_disclaimer_desc">AirPlay, Apple TV, iPhone, iPad ve Mac; Apple Inc.\'in ABD ve diğer ülkelerde tescilli ticari markalarıdır. Bu bağımsız açık kaynak projesi Apple Inc. ile ilişkili değildir, Apple tarafından onaylanmamış veya desteklenmemiştir. Uygulama yalnızca yerel ağda birlikte çalışabilirlik amacıyla geliştirilmiş olup hiçbir telifli DRM/FairPlay içeriği kırmaz veya şifresini çözmez.</string>
 

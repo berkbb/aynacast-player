@@ -4,7 +4,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2.10-purple.svg)](https://kotlinlang.org)
 [![Compose TV](https://img.shields.io/badge/Jetpack%20Compose%20for%20TV-1.0.0-green.svg)](https://developer.android.com/jetpack/compose/tv)
 [![NDK](https://img.shields.io/badge/NDK-r30-orange.svg)](https://developer.android.com/ndk)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 A high-performance, ultra-low-latency, hardware-accelerated **AirPlay Receiver & Screen Mirroring Engine** engineered specifically for **Android TV** and **Google TV**, combining native Turkish ("Ayna" - Mirror) and English ("Cast" - Stream) branding: **AynaCast TV** (`com.babadogan.aynacast.tv`).
 
@@ -168,4 +168,6 @@ Run all tests via:
 
 ## 📄 License
 
-Licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details and [TRADEMARKS.md](TRADEMARKS.md) for trademark notices.
+Copyright (C) 2026 Babadogan Tech & Edu.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License v3.0** (or, at your option, any later version) — see [LICENSE](LICENSE). It is distributed WITHOUT ANY WARRANTY. The app includes GPL-3.0 code (the FairPlay `playfair` handshake, as in UxPlay and RPiPlay), so the project as a whole is GPL-3.0. Third-party components: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Trademark notices: [TRADEMARKS.md](TRADEMARKS.md).

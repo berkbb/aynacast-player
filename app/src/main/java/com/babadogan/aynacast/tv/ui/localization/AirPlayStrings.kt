@@ -310,9 +310,9 @@ object AirPlayStrings {
     }
 
     fun aboutLicenseDesc(lang: AppLanguage): String = when (lang) {
-        AppLanguage.TR -> "MIT Açık Kaynak Lisansı ile lisanslanmıştır."
-        AppLanguage.EN -> "Licensed under the MIT Open Source License."
-        AppLanguage.RO -> "Licențiat sub licența open source MIT."
+        AppLanguage.TR -> "GNU Genel Kamu Lisansı v3.0 (GPL-3.0) ile lisanslanmıştır."
+        AppLanguage.EN -> "Licensed under the GNU General Public License v3.0 (GPL-3.0)."
+        AppLanguage.RO -> "Licențiat sub GNU General Public License v3.0 (GPL-3.0)."
     }
 
     fun aboutDisclaimerTitle(lang: AppLanguage): String = when (lang) {

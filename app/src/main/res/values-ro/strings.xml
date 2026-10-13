@@ -29,7 +29,7 @@
     <string name="about_developer_title">Dezvoltator și drepturi de autor</string>
     <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara University Technopolis</string>
     <string name="about_license_title">Licență</string>
-    <string name="about_license_desc">Licențiat sub licența open source MIT.</string>
+    <string name="about_license_desc">Licențiat sub GNU General Public License v3.0 (GPL-3.0).</string>
     <string name="about_disclaimer_title">Declinarea răspunderii și mărci comerciale</string>
     <string name="about_disclaimer_desc">AirPlay, Apple TV, iPhone, iPad și Mac sunt mărci comerciale înregistrate ale Apple Inc., înregistrate în SUA și în alte țări și regiuni. Acest proiect open source independent nu este afiliat, sponsorizat sau aprobat de Apple Inc. Este dezvoltat exclusiv pentru interoperabilitatea dispozitivelor din rețeaua locală și pentru cercetare și nu decriptează și nu ocolește fluxurile protejate prin DRM.</string>
 
