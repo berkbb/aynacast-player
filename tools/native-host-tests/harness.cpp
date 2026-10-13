@@ -36,6 +36,12 @@ int main() {
         if (mode == 1 && in.size() == 256) { out.assign(16, 0x42); return true; }
         return false;
     });
+    server.setClassicAuthCallback([](const airplay::RaopRtspServer::ClassicAuth& a) -> bool {
+        // Stub of PinPairingManager.checkClassicDigest: the "right code" is the response "good".
+        printf("EVT classicauth sender=%s method=%s nonce=%zu response=%s\n", a.senderId.c_str(), a.method.c_str(),
+               a.nonce.size(), a.response.c_str());
+        return a.response == "good";
+    });
     server.setPinSetupCallback([](int step, const std::string& user, const std::vector<std::vector<uint8_t>>& in,
                                   std::vector<std::vector<uint8_t>>& out) -> bool {
         // Stub of the Java SRP side: fixed values let the driver check routing and plist encoding.

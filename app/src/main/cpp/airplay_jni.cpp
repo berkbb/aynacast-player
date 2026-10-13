@@ -26,6 +26,7 @@ static jmethodID g_midOnPlaybackProgress = nullptr;
 static jmethodID g_midOnPinStart = nullptr;
 static jmethodID g_midOnPinSetup = nullptr;
 static jmethodID g_midOnRsa = nullptr;
+static jmethodID g_midOnClassicAuth = nullptr;
 static jmethodID g_midOnVideoCastPlay = nullptr;
 static jmethodID g_midOnVideoCastSeek = nullptr;
 static jmethodID g_midOnVideoCastRate = nullptr;
@@ -211,6 +212,8 @@ Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(
         g_midOnPinStart = findMethod(env, clazz, "onPinStart", "()V");
         g_midOnPinSetup = findMethod(env, clazz, "onPinSetup", "(ILjava/lang/String;[[B)[[B");
         g_midOnRsa = findMethod(env, clazz, "onRsa", "(I[B)[B");
+        g_midOnClassicAuth = findMethod(env, clazz, "onClassicAuth",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z");
         g_midOnVideoCastPlay = findMethod(env, clazz, "onVideoCastPlay", "(Ljava/lang/String;D)V");
         g_midOnVideoCastSeek = findMethod(env, clazz, "onVideoCastSeek", "(D)V");
         g_midOnVideoCastRate = findMethod(env, clazz, "onVideoCastRate", "(F)V");
@@ -371,6 +374,19 @@ Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(
         e->GetByteArrayRegion(jOut, 0, len, reinterpret_cast<jbyte*>(out.data()));
         e->DeleteLocalRef(jOut);
         return true;
+    });
+
+    g_server->setClassicAuthCallback([](const airplay::RaopRtspServer::ClassicAuth& auth) -> bool {
+        JNIEnv* e = getJniEnv();
+        if (!e || !g_listenerObj || !g_midOnClassicAuth) return false;
+        const std::string* fields[] = {&auth.senderId, &auth.username, &auth.realm, &auth.nonce,
+                                       &auth.method, &auth.uri, &auth.response};
+        jstring js[7];
+        for (int i = 0; i < 7; ++i) js[i] = newJavaString(e, *fields[i]);
+        jboolean ok = e->CallBooleanMethod(g_listenerObj, g_midOnClassicAuth, js[0], js[1], js[2], js[3], js[4], js[5], js[6]);
+        clearPendingException(e, "onClassicAuth");
+        for (jstring s : js) e->DeleteLocalRef(s);
+        return ok == JNI_TRUE;
     });
 
     g_server->setPinSetupCallback([](int step, const std::string& user,

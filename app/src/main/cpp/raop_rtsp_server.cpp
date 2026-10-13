@@ -894,6 +894,11 @@ void RaopRtspServer::handleClientConnection(int clientFd, const std::string& cli
         }
     }
     crypto_.forgetConnection(connectionId);
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        classicNonces_.erase(connectionId);
+        classicAuthorized_.erase(connectionId);
+    }
     LOGI("RTSP client connection #%" PRIu64 " closed for %s", connectionId, clientIp.c_str());
 }
 
@@ -903,7 +908,9 @@ bool RaopRtspServer::pinAllows(uint64_t connectionId) {
         std::lock_guard<std::mutex> lock(configMutex_);
         pinRequired = pinRequired_;
     }
-    return !pinRequired || crypto_.isPairVerified(connectionId);
+    if (!pinRequired || crypto_.isPairVerified(connectionId)) return true;
+    std::lock_guard<std::mutex> lock(configMutex_);
+    return classicAuthorized_.count(connectionId) > 0;
 }
 
 void RaopRtspServer::endSessionLocked(const char* reason) {
@@ -1117,7 +1124,54 @@ void RaopRtspServer::answerAppleChallenge(const RtspRequest& req, RtspResponse& 
     LOGI("Answered the classic AirPlay Apple-Challenge");
 }
 
+bool RaopRtspServer::authorizeClassic(const RtspRequest& req, RtspResponse& resp, uint64_t connectionId) {
+    std::string nonce;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        if (!pinRequired_ || classicAuthorized_.count(connectionId)) return true;
+        std::string& stored = classicNonces_[connectionId];
+        if (stored.empty()) {
+            char buf[33];
+            for (int i = 0; i < 16; ++i) std::snprintf(buf + 2 * i, 3, "%02x", static_cast<unsigned>(arc4random() & 0xFF));
+            stored = buf;
+        }
+        nonce = stored;
+    }
+    // Authorization: Digest username="iTunes", realm="raop", nonce="...", uri="...", response="..."
+    ClassicAuth auth;
+    auth.senderId = headerValue(req, "dacp-id");
+    auth.nonce = nonce;
+    auth.method = req.method;
+    std::string header = headerValue(req, "authorization");
+    auto field = [&header](const char* name) {
+        std::string key = std::string(name) + "=\"";
+        size_t pos = header.find(key);
+        if (pos == std::string::npos) return std::string();
+        pos += key.size();
+        size_t end = header.find('"', pos);
+        return end == std::string::npos ? std::string() : header.substr(pos, end - pos);
+    };
+    if (header.rfind("Digest ", 0) == 0 && field("nonce") == nonce) {
+        auth.username = field("username");
+        auth.realm = field("realm");
+        auth.uri = field("uri");
+        auth.response = field("response");
+    }
+    if (onClassicAuth_ && onClassicAuth_(auth)) {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        classicAuthorized_.insert(connectionId);
+        LOGI("Classic AirPlay sender authorized (connection #%" PRIu64 ")", connectionId);
+        return true;
+    }
+    LOGI("Classic AirPlay sender asked for the on-screen code (%s)", auth.response.empty() ? "first request" : "wrong code");
+    resp.statusCode = 401;
+    resp.statusMessage = "Unauthorized";
+    resp.headers["WWW-Authenticate"] = "Digest realm=\"raop\", nonce=\"" + nonce + "\"";
+    return false;
+}
+
 void RaopRtspServer::handleLegacyAnnounce(const RtspRequest& req, RtspResponse& resp, uint64_t connectionId) {
+    if (!authorizeClassic(req, resp, connectionId)) return;
     std::string sdp(req.body.begin(), req.body.end());
     LegacyAnnounce announce;
     announce.connectionId = connectionId;

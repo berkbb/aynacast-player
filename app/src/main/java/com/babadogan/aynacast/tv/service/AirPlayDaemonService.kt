@@ -434,7 +434,7 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
             setAttribute("da", "true")
             setAttribute("sr", "44100")
             setAttribute("ss", "16")
-            setAttribute("pw", "false")
+            setAttribute("pw", if (pinRequired) "true" else "false")
             setAttribute("vn", "3")
             setAttribute("tp", "UDP")
             setAttribute("md", "0,1,2")
@@ -624,6 +624,16 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
     }
 
     override fun onRsa(mode: Int, input: ByteArray): ByteArray? = AirPortRsa.apply(mode, input)
+
+    override fun onClassicAuth(
+        senderId: String, username: String, realm: String, nonce: String,
+        method: String, uri: String, response: String
+    ): Boolean {
+        val allowed = PinPairingManager.checkClassicDigest(senderId, username, realm, nonce, method, uri, response)
+        // The Mac shows its password prompt now: put the code to type on screen.
+        if (!allowed && !PinPairingManager.isPairing()) onPinStart()
+        return allowed
+    }
 
     override fun onVideoCastPlay(url: String, startSeconds: Double) {
         Log.i(TAG, "Video casting started")

@@ -956,6 +956,34 @@ raw(c, "TEARDOWN rtsp://127.0.0.1/1 RTSP/1.0\r\nCSeq: 6\r\n")
 check(wait_event("EVT audioconfig") == "EVT audioconfig codec=-1 sr=0 ch=0 spf=0", "classic TEARDOWN stops audio")
 c.close()
 
+# 16d. Classic AirPlay with the PIN on: HTTP Digest with the on-screen code
+command("PIN ON")
+c = connect()
+announce_head = "ANNOUNCE rtsp://127.0.0.1/2 RTSP/1.0\r\nCSeq: {}\r\nContent-Type: application/sdp\r\nDACP-ID: 1B9DA7E05AFA3B74\r\n{}"
+st, hdrs, _ = raw(c, announce_head.format(1, ""), sdp("AppleLossless"))
+challenge = hdrs.get("www-authenticate", "")
+ev = wait_event("EVT classicauth")
+check(st == "RTSP/1.0 401 Unauthorized" and challenge.startswith('Digest realm="raop", nonce="'),
+      f"PIN on: classic ANNOUNCE without a password gets a Digest challenge ({st}, {challenge})")
+check(ev == "EVT classicauth sender=1B9DA7E05AFA3B74 method=ANNOUNCE nonce=32 response=", f"sender identified by its DACP-ID ({ev})")
+nonce = challenge.split('nonce="')[1].rstrip('"')
+auth = 'Authorization: Digest username="iTunes", realm="raop", nonce="{}", uri="rtsp://127.0.0.1/2", response="{}"\r\n'
+st, _, _ = raw(c, announce_head.format(2, auth.format(nonce, "bad")), sdp("AppleLossless"))
+check(st == "RTSP/1.0 401 Unauthorized" and "response=bad" in (wait_event("EVT classicauth") or ""), f"wrong code refused ({st})")
+st, _, _ = raw(c, announce_head.format(3, auth.format("stale-nonce", "good")), sdp("AppleLossless"))
+check(st == "RTSP/1.0 401 Unauthorized" and (wait_event("EVT classicauth") or "").endswith("response="), f"a response to another nonce is ignored ({st})")
+st, _, _ = raw(c, announce_head.format(4, auth.format(nonce, "good")), sdp("AppleLossless"))
+check(st == "RTSP/1.0 200 OK", f"right code accepted ({st})")
+drain("EVT classicauth"); drain("EVT rsa")
+st, _, _ = raw(c, "SETUP rtsp://127.0.0.1/2 RTSP/1.0\r\nCSeq: 5\r\nTransport: RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;control_port=6001;timing_port=6002\r\n")
+check(st == "RTSP/1.0 200 OK" and wait_event("EVT classicauth", 0.3) is None, f"the authorized connection sets up without asking again ({st})")
+st, _, _ = raw(c, "RECORD rtsp://127.0.0.1/2 RTSP/1.0\r\nCSeq: 6\r\n")
+check(st == "RTSP/1.0 200 OK", f"and records ({st})")
+raw(c, "TEARDOWN rtsp://127.0.0.1/2 RTSP/1.0\r\nCSeq: 7\r\n")
+drain("EVT audioconfig")
+c.close()
+command("PIN OFF")
+
 # 17. stop() with live, idle connections (RTSP + NTP) must return promptly and cleanly
 idle_rtsp = connect()
 idle_rtsp.sendall(request("SETUP", "rtsp://x/4", 1, session, "application/x-apple-binary-plist")); recv_response(idle_rtsp)

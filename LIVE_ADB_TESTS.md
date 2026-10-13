@@ -391,9 +391,16 @@ slider in the AirPlay menu.
 ALAC 352 frames/packet, 44100 Hz, RSA-encrypted`, `Classic AirPlay SETUP: …`, `Sender volume changed`
 values that follow the slider, `Audio output: … target 400 ms … rebuffers +0`.
 
-**Result (13 Oct 2026, Arçelik):** ✅ plays; classic senders send no `/feedback`, so their session now
-lives on audio packets (`kClassicIdleTimeout`, 120 s; it ended after 15 s before). Not yet: PIN for this
-entry (macOS asks a password for `pw=true`), and whether iPhones are confused by the extra speaker entry.
+**PIN on:** the entry advertises `pw=true`; the first ANNOUNCE gets `401` with a Digest challenge, the
+Mac shows a password prompt and the TV shows a code at the same time; the code typed as the password is
+checked (`Classic AirPlay sender paired with PIN`) and the Mac is remembered by its `DACP-ID` in the
+paired devices list. Weaker than iPhone pairing: a DACP-ID proves nothing on the LAN.
+
+**Result (13 Oct 2026, Arçelik):** ✅ plays; volume follows the AirPlay slider; ✅ PIN: password prompt +
+on-screen code, then plays, song changes not asked again. Classic senders send no `/feedback`, so their
+session lives on audio packets (`kClassicIdleTimeout`, 120 s; it ended after 15 s before). The first song's
+artwork can be missing: the Mac sent `Cover art received (0 bytes, image/none)` and nothing later (the
+next song's came at once). iPhone music and mirroring through the main entry unchanged.
 
 ### Test 12 (long run / resource usage) not done yet
 

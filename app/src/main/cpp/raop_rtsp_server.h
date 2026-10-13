@@ -9,6 +9,7 @@
 #include "raop_ntp.h"
 #include "video_cast.h"
 #include <atomic>
+#include <map>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -83,6 +84,14 @@ public:
     // 1: unwrap the ANNOUNCE rsaaeskey). Implemented in Java (AirPortRsa).
     using RsaCallback = std::function<bool(int mode, const std::vector<uint8_t>& in, std::vector<uint8_t>& out)>;
     void setRsaCallback(RsaCallback cb) { onRsa_ = std::move(cb); }
+    // PIN for classic AirPlay senders, which cannot do pair-verify: HTTP Digest with the on-screen
+    // code as the password. Returns true when the sender may stream: it is remembered (senderId,
+    // its DACP-ID), or [response] matches the code shown. Implemented in Java (PinPairingManager).
+    struct ClassicAuth {
+        std::string senderId, username, realm, nonce, method, uri, response;
+    };
+    using ClassicAuthCallback = std::function<bool(const ClassicAuth& auth)>;
+    void setClassicAuthCallback(ClassicAuthCallback cb) { onClassicAuth_ = std::move(cb); }
 
     // AirPlay video casting (URL / YouTube HLS). closeConnections is supplied by the server itself.
     void setVideoCastCallbacks(VideoCastHandler::Callbacks callbacks);
@@ -130,6 +139,8 @@ private:
     // Classic AirPlay (RAOP, e.g. the macOS Music app): RSA challenge, SDP ANNOUNCE, Transport SETUP.
     void answerAppleChallenge(const RtspRequest& req, RtspResponse& resp, int clientFd);
     void handleLegacyAnnounce(const RtspRequest& req, RtspResponse& resp, uint64_t connectionId);
+    // PIN on: answers 401 with a Digest challenge unless this classic connection is authorized.
+    bool authorizeClassic(const RtspRequest& req, RtspResponse& resp, uint64_t connectionId);
     void handleLegacySetup(const RtspRequest& req, RtspResponse& resp, const std::string& clientIp,
                            uint64_t connectionId, int clientFd);
     void handlePairSetupPin(const RtspRequest& req, RtspResponse& resp);
@@ -180,6 +191,9 @@ private:
         std::string clientName;
     };
     LegacyAnnounce legacyAnnounce_;
+    // Classic connections: Digest nonce sent to each, and those that passed the PIN check.
+    std::map<uint64_t, std::string> classicNonces_;
+    std::set<uint64_t> classicAuthorized_;
     int displayWidth_{1920};
     int displayHeight_{1080};
     float displayRefreshRate_{50.0f};
@@ -239,6 +253,7 @@ private:
     PinStartCallback onPinStart_;
     PinSetupCallback onPinSetup_;
     RsaCallback onRsa_;
+    ClassicAuthCallback onClassicAuth_;
 };
 
 } // namespace airplay

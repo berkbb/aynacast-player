@@ -11,6 +11,7 @@ import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.security.MessageDigest
 import java.security.SecureRandom
 
 /**
@@ -37,6 +38,8 @@ object PinPairingManager {
     private const val MAX_ATTEMPTS_PER_PIN = 3
     private const val MAX_CONSECUTIVE_FAILURES = 9
     private const val LOCKOUT_MS = 5 * 60_000L
+    // Paired-device key of a classic AirPlay sender: this prefix + its DACP-ID (not an Ed25519 key).
+    private const val CLASSIC_KEY_PREFIX = "classic-dacp:"
 
     private val random = SecureRandom()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
@@ -140,6 +143,37 @@ object PinPairingManager {
             else -> null
         }
     }
+
+    /**
+     * Classic AirPlay senders (the macOS Music app) cannot run the SRP exchange; they answer an HTTP
+     * Digest challenge with the code typed into their password prompt instead. A sender that once
+     * entered the code is remembered by [senderId] (its DACP-ID) and listed with the paired devices.
+     * Weaker than SRP pairing: the DACP-ID proves nothing, a LAN host could reuse a seen one.
+     */
+    @Synchronized
+    fun checkClassicDigest(
+        senderId: String, username: String, realm: String, nonce: String,
+        method: String, uri: String, response: String
+    ): Boolean {
+        val key = if (senderId.isNotEmpty()) (CLASSIC_KEY_PREFIX + senderId).toByteArray() else null
+        if (key != null && _pairedDevices.value.any { it.contentEquals(key) }) return true
+        val pin = _pinCode.value
+        if (response.isEmpty() || pin == null || server == null) return false
+        val ha1 = md5Hex("$username:$realm:$pin")
+        val ha2 = md5Hex("$method:$uri")
+        if (md5Hex("$ha1:$nonce:$ha2") != response.lowercase()) {
+            registerFailure()
+            return false
+        }
+        consecutiveFailures = 0
+        if (key != null) remember(key)
+        endPairing(Outcome.PAIRED)
+        Log.i(TAG, "Classic AirPlay sender paired with PIN")
+        return true
+    }
+
+    private fun md5Hex(text: String): String =
+        MessageDigest.getInstance("MD5").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 
     /** Hides the code (e.g. the sender gave up, or it expired). */
     @Synchronized

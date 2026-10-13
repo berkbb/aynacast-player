@@ -64,6 +64,15 @@ object AirPlayNativeBridge {
         /** Classic AirPlay (RAOP) RSA: see [AirPortRsa.apply]; null when it fails. */
         fun onRsa(mode: Int, input: ByteArray): ByteArray?
 
+        /**
+         * PIN for a classic AirPlay sender (HTTP Digest, the on-screen code as password); see
+         * PinPairingManager.checkClassicDigest. Empty [response]: the sender sent no password yet.
+         */
+        fun onClassicAuth(
+            senderId: String, username: String, realm: String, nonce: String,
+            method: String, uri: String, response: String
+        ): Boolean
+
         /** Video casting: play [url] (direct URL or the receiver's own HLS master) from [startSeconds]. */
         fun onVideoCastPlay(url: String, startSeconds: Double)
         fun onVideoCastSeek(positionSeconds: Double)
