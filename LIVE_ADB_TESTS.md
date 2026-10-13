@@ -341,37 +341,35 @@ on a still screen (write the values measured while mirroring into the table). Pi
 
 ## Known open issues
 
-### Audio: crackle and stutter in the first ~15 seconds of a stream (Mac and iPhone)
+### Audio: crackle and stutter (Mac and iPhone) – jitter buffer added, retest on Android 8
 
-**Symptom:** with Mac screen mirroring (AAC-ELD) and iPhone music (ALAC), crackle and short gaps are
-heard in the first 10–15 seconds after audio starts; then the sound is clean. In the default
-lowest-latency mode the audio can trail the picture slightly (~0.2–0.3 s on the Mac).
+**Symptom:** crackle and short gaps. On the Philips it was heard in the first 10–15 seconds; on the
+Arçelik (Android 11) it went on for the whole session.
 
-**Measurement** (`AudioPlaybackEngine` logs an `Audio output:` line every 5 seconds):
+**Cause:** audio packets arrive in Wi-Fi **bursts** (gaps of up to ~290 ms were measured on the
+Arçelik) and were written straight into a ~160 ms `AudioTrack` with `WRITE_NON_BLOCKING`: a burst
+overflowed it (audio silently dropped), the gap after it drained it (underruns). Nothing absorbed the
+sender's clock drift either.
 
-| Sender | First 15 s | Afterwards |
-|--------|------------|------------|
-| Mac (AAC-ELD) | underruns +1/+23/+1, ~76 KB dropped (~0.43 s of audio) | 56–114 ms buffered, no loss |
-| iPhone music (ALAC) | underruns +12/+14, ~150 KB dropped | 140–160 ms buffered, no loss |
+**Fix (`PcmJitterOutput`, default mode only):** the network thread appends decoded PCM to a queue; a
+writer thread feeds a small `AudioTrack` with blocking writes, so the TV's clock paces playback. The
+queue level adapts (starts at 120 ms, +40 ms per refill, −10 ms per 30 quiet seconds), drift is
+corrected one sample frame per 10 ms chunk, extra latency left by refill pauses is cut after 2 s
+(5 ms fade-in), and an output that stops consuming is rebuilt. The timestamp-sync mode keeps its
+own path.
 
-At the start audio packets arrive **in bursts**: the 171 ms `AudioTrack` buffer overflows
-(`WRITE_NON_BLOCKING` silently drops what does not fit) and drains in the gaps between bursts
-(underruns). No packet loss or retransmission was seen on the network.
+**Reading the log** (`Audio output:` every 5 s): `rebuffers` and `track underruns` should stay at +0
+after the first ~5 seconds, `overflow` at 0 B. `max arrival gap` shows the Wi-Fi gaps; `target`
+follows them.
 
-**Fixes tried and reverted:**
-1. A 400 ms buffer + 80 ms pre-roll + a 220 ms latency cap → on Android 8 an `AudioTrack` **does not
-   start playing until its buffer is full**; the cap kept the buffer from filling, so there was no sound at all.
-2. A 120 ms effective buffer until playback starts, then opened up to 400 ms → the crackle was gone,
-   but after about a minute the TV's audio output **stopped consuming** (the buffer froze at 228 ms)
-   and the cap then dropped all audio.
+| TV | Before | After |
+|----|--------|-------|
+| Arçelik, Mac mirroring | loss in every 5 s window (e.g. underruns +5, 45 KB dropped) | first ~5 s: 4 refills; then 3 min with no loss; latency ≈ 280 ms queue + 80 ms track |
 
-Both attempts were reverted; the audio path is back to the original, with only the measurement line added.
-
-**Next step:** the real root cause is the **playback stall** seen in the second attempt. Trace the TV's
-audio system (audio focus, Philips sound processing or the `AudioTrack` state); then retry buffering
-that absorbs the bursts but does not silence audio during a stall (e.g. apply the cap only while
-`playbackHeadPosition` advances). The Audio/Video Sync (Timestamps) mode aligns the latency, but
-this crackle should be measured with it separately.
+**Still to check:** the Philips (Android 8), where earlier buffering attempts failed (an `AudioTrack`
+there does not start until its buffer is full, and once stopped consuming after about a minute);
+iPhone music (ALAC); whether the ~0.35 s audio delay is acceptable for lip-sync (otherwise use the
+sync setting, which delays the picture to match).
 
 ### Test 12 (long run / resource usage) not done yet
 
@@ -394,7 +392,7 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | Test | Result | Notes |
 |------|--------|-------|
 | 1 Installation and service | ✅ | Release APK (armeabi-v7a) |
-| 4 Mac mirroring | ✅ | Fixed: `OMX.MS.AVC.Decoder` rejects `KEY_LOW_LATENCY`, Android 11 then fails `configure()` and the software decoder (~40 fps, 467 dropped frames per minute) lagged visibly. Now hardware, ~51 fps, no drops. Idle desktop only; audio and full-screen video not tried |
+| 4 Mac mirroring | ✅ | Fixed: `OMX.MS.AVC.Decoder` rejects `KEY_LOW_LATENCY`, Android 11 then fails `configure()` and the software decoder (~40 fps, 467 dropped frames per minute) lagged visibly. Now hardware, 42–60 fps at 2–3 Mbps, no drops. Fixed: constant audio crackle (jitter buffer, see the audio issue above) |
 
 The other tests were not run on this TV.
 

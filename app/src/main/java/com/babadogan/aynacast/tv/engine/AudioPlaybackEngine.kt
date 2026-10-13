@@ -18,6 +18,8 @@ import java.nio.ByteBuffer
  *
  * ALAC streams arrive already decoded to 16-bit PCM by the native core. AAC-ELD (screen mirroring)
  * and AAC-LC streams arrive as encoded access units and are decoded with MediaCodec here.
+ * The PCM plays through [PcmJitterOutput]; in timestamp-sync mode it is placed into an AudioTrack
+ * directly, by sender timestamp.
  * All methods are called from native server threads and are serialized by the object monitor.
  */
 object AudioPlaybackEngine {
@@ -26,8 +28,6 @@ object AudioPlaybackEngine {
     private const val DEFAULT_SAMPLE_RATE = 44100
     private const val DEFAULT_CHANNELS = 2
     private const val BYTES_PER_SAMPLE = 2
-    // Enough buffering to ride out Wi-Fi jitter while keeping lip-sync with the video acceptable.
-    private const val TRACK_BUFFER_MS = 100
     private const val PREROLL_MS = 40
     private const val DECODER_INPUT_TIMEOUT_US = 5_000L
     private const val MAX_DECODER_RESTARTS = 3
@@ -50,6 +50,9 @@ object AudioPlaybackEngine {
     private var sampleRate = DEFAULT_SAMPLE_RATE
     private var channelCount = DEFAULT_CHANNELS
 
+    // Default mode: a jitter buffer with its own writer thread (see PcmJitterOutput).
+    private var jitterOutput: PcmJitterOutput? = null
+    // Timestamp-sync mode writes into this track directly, placing audio by sender timestamps.
     private var audioTrack: AudioTrack? = null
     private var trackStarted = false
     private var bytesWrittenBeforePlay = 0
@@ -124,11 +127,12 @@ object AudioPlaybackEngine {
     fun setVolumeDb(volumeDb: Float) {
         volumeGain = AirPlayAudioFormat.volumeDbToGain(volumeDb)
         audioTrack?.setVolume(volumeGain)
+        jitterOutput?.setVolume(volumeGain)
     }
 
     /**
-     * Sync mode needs a larger track buffer (see SYNC_TRACK_BUFFER_MS); the track is rebuilt with
-     * the right size on the next packet, so switching the setting mid-session takes effect at once.
+     * Sync mode writes into its own, larger track (see SYNC_TRACK_BUFFER_MS); the output is rebuilt
+     * for the new mode on the next packet, so switching the setting mid-session takes effect at once.
      */
     @Synchronized
     fun onSyncModeChanged() {
@@ -263,6 +267,10 @@ object AudioPlaybackEngine {
      * is dropped. Otherwise it is played as soon as possible.
      */
     private fun writePcmAt(data: ByteArray, length: Int, localTimeNs: Long) {
+        if (!AvSync.enabled) {
+            writeBuffered(data, length)
+            return
+        }
         if (localTimeNs <= 0L || !AvSync.isActive()) {
             writePcm(data, length)
             return
@@ -280,6 +288,18 @@ object AudioPlaybackEngine {
             if (error < -SYNC_TOLERANCE_NS) writeSilence(track, minOf(-error, MAX_SILENCE_NS), length)
         }
         writePcm(data, length)
+    }
+
+    private fun writeBuffered(data: ByteArray, length: Int) {
+        if (audioTrack != null) releaseTrack() // Leaving sync mode.
+        val output = jitterOutput ?: PcmJitterOutput(sampleRate, channelCount, volumeGain).also { jitterOutput = it }
+        output.write(data, length)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastStatsAtMs >= STATS_INTERVAL_MS) {
+            lastStatsAtMs = now
+            Log.i(TAG, "Audio output: ${output.takeStats()}, decoder input misses $decoderInputMisses")
+            decoderInputMisses = 0
+        }
     }
 
     /** When the next sample written to [track] will be heard, on the System.nanoTime() clock. */
@@ -324,6 +344,7 @@ object AudioPlaybackEngine {
     }
 
     private fun writePcm(data: ByteArray, length: Int) {
+        jitterOutput?.let { it.release(); jitterOutput = null } // Entering sync mode.
         val track = audioTrack ?: createTrack() ?: return
         try {
             val written = track.write(data, 0, length, AudioTrack.WRITE_NON_BLOCKING)
@@ -347,8 +368,7 @@ object AudioPlaybackEngine {
         return try {
             val channelMask = if (channelCount == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
             val minBufferSize = AudioTrack.getMinBufferSize(sampleRate, channelMask, AudioFormat.ENCODING_PCM_16BIT)
-            val bufferMs = if (AvSync.enabled) SYNC_TRACK_BUFFER_MS else TRACK_BUFFER_MS
-            val bufferSize = maxOf(minBufferSize * 2, bytesForMillis(bufferMs))
+            val bufferSize = maxOf(minBufferSize * 2, bytesForMillis(SYNC_TRACK_BUFFER_MS))
 
             val track = AudioTrack.Builder()
                 .setAudioAttributes(
@@ -384,6 +404,8 @@ object AudioPlaybackEngine {
     private fun bytesForMillis(millis: Int): Int = sampleRate * channelCount * BYTES_PER_SAMPLE * millis / 1000
 
     private fun releaseTrack() {
+        jitterOutput?.release()
+        jitterOutput = null
         audioTrack?.let { track ->
             runCatching {
                 if (trackStarted) track.pause()
