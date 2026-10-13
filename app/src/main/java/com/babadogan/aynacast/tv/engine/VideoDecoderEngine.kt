@@ -1,11 +1,13 @@
 package com.babadogan.aynacast.tv.engine
 
 import android.media.MediaCodec
+import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Build
 import android.util.Log
 import android.view.Surface
+import androidx.annotation.RequiresApi
 import com.babadogan.aynacast.tv.session.AirPlaySessionManager
 import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
@@ -300,7 +302,9 @@ object VideoDecoderEngine {
                 setByteBuffer("csd-1", ByteBuffer.wrap(ppsPrefix))
                 // An uncompressed frame is a safe upper bound for any access unit (large IDRs included).
                 setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxOf(streamWidth * streamHeight * 3 / 2, 1 shl 20))
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Only when advertised: on Android 11 ACodec fails configure() outright if the decoder
+                // rejects it (OMX.MS.AVC.Decoder on MStar TVs), which forced the slow software decoder.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && supportsLowLatency(codec)) {
                     setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                 }
                 setInteger(MediaFormat.KEY_PRIORITY, 0)
@@ -607,6 +611,12 @@ object VideoDecoderEngine {
             }
         }
     }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun supportsLowLatency(codec: MediaCodec): Boolean = runCatching {
+        codec.codecInfo.getCapabilitiesForType(MIME_TYPE)
+            .isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)
+    }.getOrDefault(false)
 
     /** Platform software AVC decoder (c2.android.avc.decoder on Android 10+, OMX.google.* before). */
     private fun findSoftwareDecoderName(): String? = runCatching {
