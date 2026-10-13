@@ -413,6 +413,7 @@ last column.
 | 4c | – Wi-Fi gaps (`max arrival gap`) | Usually ~80 ms, peaks 190–335 ms | Peaks: |
 | 4d | – output stall (`Audio output stalled`) | Never | Seen? Sound after 1+ minute? (the earlier 400 ms attempt froze here) |
 | 4e | – track start (Android 8 starts an `AudioTrack` only once its buffer is full) | – | Sound starts at once? |
+| 4f | – iPhone Apple Music (ALAC, Test 6) | Plays well; 6 refills in the first ~30 s (target 120 → 360 ms, Wi-Fi gaps up to 414 ms), then no loss | Refills / crackle: |
 
 **Command for the audio numbers:**
 `grep "Audio output" tv-logs/<test>.log` – one line every 5 seconds.
