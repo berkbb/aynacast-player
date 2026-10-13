@@ -396,6 +396,27 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 
 The other tests were not run on this TV.
 
+### Changes made on Android 11 – compare on Android 8
+
+Commits `863f2c9`, `6493ed3`, `3ddc418` were developed and measured only on the Arçelik (Android 11).
+The Philips (Android 8) last ran the build before them; rerun Tests 3, 4 and 6 there and fill in the
+last column.
+
+| # | Change | Android 11 (Arçelik, Mac mirroring) | Android 8 (Philips) |
+|---|--------|-------------------------------------|---------------------|
+| 1 | `KEY_LOW_LATENCY` only when the decoder advertises `FEATURE_LowLatency` | Hardware decoder `OMX.MS.AVC.Decoder` instead of software; 42–60 fps, 0 dropped frames (before: ~40 fps, 467 drops/min) | Key is Android 11+ only, so no change expected: `MediaCodec started` line still shows the MTK hardware decoder, `software=false` |
+| 2 | Hardware decoder retried without optional keys before the software fallback; failed codec released | Not triggered (`minimalFormat=false`) | `minimalFormat=` value: |
+| 3 | `• HW` / `• SW` in the player's info box | `• HW` | Shows: |
+| 4 | Audio jitter buffer (`PcmJitterOutput`), default mode | After the first ~5 s: `rebuffers +0`, `track underruns +0`, `overflow 0 B` for 3 min; crackle gone | Crackle (Mac / iPhone music): |
+| 4a | – first seconds | 4 refills in the first 5 s, target rises 120 → 280 ms, excess trimmed within ~10 s | Refills / target: |
+| 4b | – latency | ≈ 280 ms queue + 80 ms track ≈ 0.35 s; lip-sync acceptable by ear | Queue / track ms, lip-sync: |
+| 4c | – Wi-Fi gaps (`max arrival gap`) | Usually ~80 ms, peaks 190–335 ms | Peaks: |
+| 4d | – output stall (`Audio output stalled`) | Never | Seen? Sound after 1+ minute? (the earlier 400 ms attempt froze here) |
+| 4e | – track start (Android 8 starts an `AudioTrack` only once its buffer is full) | – | Sound starts at once? |
+
+**Command for the audio numbers:**
+`grep "Audio output" tv-logs/<test>.log` – one line every 5 seconds.
+
 ---
 
 ## Last run: 12 October 2026
