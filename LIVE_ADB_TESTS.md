@@ -341,6 +341,24 @@ on a still screen (write the values measured while mirroring into the table). Pi
 
 ---
 
+## Devices to test next
+
+Only two TVs have been through this plan, both MediaTek-family 32-bit ARM sets (Philips TPM171E, Android 8;
+Arçelik M7322, Android 11), and each new TV found device-specific issues. Before calling the app compatible with
+"most Android TVs", run this plan (at least Tests 1, 3, 4, 6, 7a, 10 and 12) on:
+
+| Priority | Device | Why |
+|----------|--------|-----|
+| 1 | Chromecast with Google TV / Google TV Streamer | Amlogic, Android 12–14, Google TV permission and background-start rules |
+| 1 | Xiaomi Mi Box S / Mi TV Stick | Amlogic, very common; different decoder (`OMX.amlogic` / `c2.amlogic`) |
+| 2 | A Sony, TCL or Philips Google TV set | Android 12+ TV firmware, arm64, 4K panel |
+| 3 | NVIDIA Shield | Tegra decoder, arm64 |
+
+Also still open everywhere: **Test 12** (long run) and the **Android 8 re-check** of 1.3.0 (see the comparison table
+above).
+
+---
+
 ## Known open issues
 
 ### Audio: crackle and stutter (Mac and iPhone) – jitter buffer added, retest on Android 8

@@ -141,6 +141,32 @@ Run all tests via:
 
 ---
 
+## 📺 Tested Devices & Compatibility
+
+Feature-wise the receiver is close to UxPlay (mirroring from iPhone / iPad / Mac, music, video casting,
+the macOS Music app, PIN), but **it has only been verified on two TVs so far**:
+
+| TV | SoC | Android | ABI | Result |
+|----|-----|---------|-----|--------|
+| Philips TPM171E | MediaTek MT5891 | 8.0 | armeabi-v7a | Full test plan on 1.2/pre-1.3 builds; 1.3.0 not re-verified yet |
+| Arçelik Android TV | MStar / MediaTek M7322 | 11 | armeabi-v7a | Full test plan on 1.3.0 except the long run |
+
+Both are MediaTek-family, 32-bit ARM TVs. **"Works on most Android TVs" is a reasonable expectation, not a
+verified one:** every new TV so far revealed device-specific issues (the Arçelik alone: a hardware decoder that
+rejects a low-latency key, audio crackle, Wi-Fi that drops multicast, notifications that never appear on screen).
+The app falls back where it can (hardware decoder retry, toast instead of notification, visibility refresh) and
+logs enough to diagnose a new device quickly, but other chips will likely have their own quirks.
+
+**Not tested yet:**
+- **Amlogic** devices — Chromecast with Google TV, Xiaomi Mi Box / Mi TV Stick and many TV boxes (among the most common).
+- **Android 12–14 / Google TV** (stricter rules for background services and permissions).
+- **64-bit (`arm64-v8a`)** devices, **NVIDIA Shield**, **Sony Bravia**, **TCL** Google TV sets.
+- A **long run** (30 min+ of mirroring and music: latency drift, memory).
+
+Reports are welcome: run [`LIVE_ADB_TESTS.md`](LIVE_ADB_TESTS.md) on your device and send the results table and logs.
+
+---
+
 ## ⚠️ Known Issues
 
 - **Two entries on the Mac:** the macOS Music app cannot use the main receiver (it only offers FairPlay 2 there), so the TV also appears as **"<TV name> (Mac)"**; pick that one in the Music app. iPhones list it as an extra speaker.

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- README "Tested Devices & Compatibility" and a "Devices to test next" list in `LIVE_ADB_TESTS.md`: only two MediaTek-family 32-bit TVs are verified; Amlogic / Google TV (Android 12–14), arm64, NVIDIA Shield and a long run are still untested.
+
 ### Changed
 - **License: MIT → GNU GPL-3.0.** The app bundles the GPL-3.0 `playfair` FairPlay code (as UxPlay and RPiPlay do), so the project as a whole must be GPL-3.0; its license file and origin are now included (`app/src/main/cpp/playfair/`), and `THIRD_PARTY_NOTICES.md` lists all third-party code. The About screen says GPL-3.0 in every language.
 
