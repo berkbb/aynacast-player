@@ -2,7 +2,8 @@ package com.babadogan.aynacast.tv.model
 
 enum class AppLanguage(val code: String, val displayName: String) {
     TR("tr", "Türkçe"),
-    EN("en", "English");
+    EN("en", "English"),
+    RO("ro", "Română");
 
     companion object {
         val DEFAULT = TR

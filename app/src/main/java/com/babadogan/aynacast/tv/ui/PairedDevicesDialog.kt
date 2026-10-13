@@ -42,7 +42,11 @@ fun PairedDevicesDialog(
     LaunchedEffect(devices.isEmpty()) {
         if (devices.isEmpty()) onDismiss()
     }
-    val locale = if (language == AppLanguage.TR) Locale("tr", "TR") else Locale.ENGLISH
+    val locale = when (language) {
+        AppLanguage.TR -> Locale("tr", "TR")
+        AppLanguage.EN -> Locale.ENGLISH
+        AppLanguage.RO -> Locale("ro", "RO")
+    }
     val dateFormat = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, locale)
 
     Dialog(onDismissRequest = onDismiss) {

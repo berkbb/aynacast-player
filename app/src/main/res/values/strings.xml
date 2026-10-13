@@ -18,6 +18,7 @@
     <string name="theme_light">Açık</string>
     <string name="lang_tr">Türkçe (Varsayılan)</string>
     <string name="lang_en">İngilizce</string>
+    <string name="lang_ro">Rumence</string>
 
     <!-- About & Legal Info Strings -->
     <string name="about_version">Sürüm: v1.0.0</string>

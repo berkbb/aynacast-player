@@ -1,0 +1,56 @@
+<resources>
+    <string name="app_name">AynaCast TV</string>
+    <string name="app_subtitle">Transmiteți imaginea și sunetul de pe dispozitivele Apple (iPhone, iPad, Mac) direct pe acest televizor prin AirPlay.</string>
+    <string name="tab_settings">Setări</string>
+    <string name="tab_about">Despre</string>
+    <string name="service_status_active">Starea serviciului: Activ</string>
+    <string name="service_status_stopped">Starea serviciului: Oprit</string>
+    <string name="how_to_connect_title">Cum vă conectați?</string>
+    <string name="restart_service">Repornește serviciul</string>
+    <string name="appearance_theme">Aspect și temă</string>
+    <string name="app_language">Limba aplicației</string>
+    <string name="setting_keep_alive_title">Serviciu în fundal 24/7</string>
+    <string name="setting_keep_alive_desc">Când este activat, serviciul pornește odată cu televizorul și ascultă în fundal. Când este dezactivat, funcționează doar cât timp aplicația este deschisă.</string>
+    <string name="keep_alive_enabled">Activ 24/7 (Recomandat)</string>
+    <string name="keep_alive_disabled">Doar cât timp aplicația e deschisă</string>
+    <string name="theme_system">Sistem</string>
+    <string name="theme_dark">Întunecat</string>
+    <string name="theme_light">Luminos</string>
+    <string name="lang_tr">Turcă (Implicit)</string>
+    <string name="lang_en">Engleză</string>
+    <string name="lang_ro">Română</string>
+
+    <!-- About & Legal Info Strings -->
+    <string name="about_version">Versiune: v1.0.0</string>
+    <string name="about_architecture_title">Arhitectură</string>
+    <string name="about_architecture_desc">Serviciu daemon în prim-plan + interfață Jetpack Compose for TV deschisă la cerere.</string>
+    <string name="about_protocols_title">Protocoale și motoare acceptate</string>
+    <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), decodor hardware MediaCodec AVC H.264, audio AAC-ELD / ALAC, AudioTrack.</string>
+    <string name="about_developer_title">Dezvoltator și drepturi de autor</string>
+    <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara University Technopolis</string>
+    <string name="about_license_title">Licență</string>
+    <string name="about_license_desc">Licențiat sub licența open source MIT.</string>
+    <string name="about_disclaimer_title">Declinarea răspunderii și mărci comerciale</string>
+    <string name="about_disclaimer_desc">AirPlay, Apple TV, iPhone, iPad și Mac sunt mărci comerciale înregistrate ale Apple Inc., înregistrate în SUA și în alte țări și regiuni. Acest proiect open source independent nu este afiliat, sponsorizat sau aprobat de Apple Inc. Este dezvoltat exclusiv pentru interoperabilitatea dispozitivelor din rețeaua locală și pentru cercetare și nu decriptează și nu ocolește fluxurile protejate prin DRM.</string>
+
+    <!-- Mirroring, permission & notification strings -->
+    <string name="show_mirroring">Afișează oglindirea</string>
+    <string name="overlay_permission_title">Permisiune de deschidere automată</string>
+    <string name="overlay_permission_button">Acordă permisiunea</string>
+    <string name="notification_service_channel">Serviciul receptor AirPlay</string>
+    <string name="notification_service_title">Receptor AirPlay activ</string>
+    <string name="notification_stream_channel">Oglindirea ecranului</string>
+    <string name="notification_stream_text">Selectați pentru a deschide ecranul de oglindire.</string>
+    <string name="av_sync_title">Sincronizare audio/video (marcaje temporale)</string>
+    <string name="av_sync_off">Oprit – latență minimă (Recomandat)</string>
+    <string name="av_sync_on">Pornit – sincronizare după marcaje temporale</string>
+    <string name="now_playing_unknown_title">Piesă necunoscută</string>
+    <string name="now_playing_paused">În pauză</string>
+    <string name="pin_title">Cod AirPlay</string>
+    <string name="notification_pin_text">Introduceți acest cod pe iPhone, iPad sau Mac: %1$s</string>
+    <string name="notification_video_cast_title">Videoclip AirPlay pregătit</string>
+    <string name="notification_video_cast_text">Selectați pentru redare.</string>
+    <string name="pin_setting_title">Cod de conectare (PIN)</string>
+    <string name="pin_off">Oprit – fără cod</string>
+    <string name="pin_on">Pornit – cod la prima conectare</string>
+</resources>

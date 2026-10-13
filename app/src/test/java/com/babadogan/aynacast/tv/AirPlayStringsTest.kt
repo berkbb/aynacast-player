@@ -158,12 +158,13 @@ class AirPlayStringsTest {
 
     @Test
     fun testXmlStringResourcesOneToOneMatching() {
-        // Parse values/strings.xml and values-en/strings.xml to ensure 100% 1:1 key parity
+        // Parse values/strings.xml, values-en and values-ro to ensure 100% 1:1 key parity
         val baseDir = File("src/main/res")
         val trStringsFile = File(baseDir, "values/strings.xml")
         val enStringsFile = File(baseDir, "values-en/strings.xml")
+        val roStringsFile = File(baseDir, "values-ro/strings.xml")
 
-        if (!trStringsFile.exists() || !enStringsFile.exists()) {
+        if (!trStringsFile.exists() || !enStringsFile.exists() || !roStringsFile.exists()) {
             return // Skip if running from different working dir
         }
 
@@ -186,5 +187,6 @@ class AirPlayStringsTest {
         assertFalse("Turkish strings should not be empty", trKeys.isEmpty())
         assertFalse("English strings should not be empty", enKeys.isEmpty())
         assertEquals("values/strings.xml and values-en/strings.xml must have exactly matching 1:1 keys", trKeys, enKeys)
+        assertEquals("values/strings.xml and values-ro/strings.xml must have exactly matching 1:1 keys", trKeys, extractKeys(roStringsFile))
     }
 }

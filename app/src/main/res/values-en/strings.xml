@@ -18,6 +18,7 @@
     <string name="theme_light">Light</string>
     <string name="lang_tr">Turkish (Default)</string>
     <string name="lang_en">English</string>
+    <string name="lang_ro">Romanian</string>
 
     <!-- About & Legal Info Strings -->
     <string name="about_version">Version: v1.0.0</string>
