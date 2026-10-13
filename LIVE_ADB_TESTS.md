@@ -280,8 +280,10 @@ adb -s "$TV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW deny
 ```
 With another app (e.g. YouTube) open on the TV: start mirroring; with PIN on, connect a new device; play a video.
 
-**Expected:** if a screen cannot open by itself, a notification appears; selecting it opens that screen.
-The PIN notification shows **the code itself**. The notification disappears once the screen is visible.
+**Expected:** opening the app shows the "Auto-Open Permission" dialog (choose Later). If a screen
+cannot open by itself, a **toast** appears over the app in use: the PIN code itself (~10 s), or
+"… is mirroring … open AynaCast TV". A notification is posted too; on Android TV it only appears in
+the notification panel, and selecting it there opens the screen.
 Log: `Could not open ...` is possible; the app must not crash. Afterwards:
 ```bash
 adb -s "$TV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow
@@ -397,8 +399,10 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | 6 Music + Now Playing | ✅ | Apple Music (ALAC) through the jitter buffer, see 4f below |
 | 7a Safari / URL video | ✅ / ⚠️ | Remote play/pause (`KEYCODE_MEDIA_PLAY_PAUSE`, scan 164) and OK reach the player and are reported to the iPhone; iPhone pause/play is followed. Started from Safari, the iPhone keeps a screen mirroring session open and several times ended the cast itself after 6–24 s (`/rate 0` + `/stop`, then mirroring again) while the TV was playing normally |
 | 7b YouTube | ✅ | |
+| 8 PIN pairing | ✅ | Pairing after removing the device; with the permission the PIN screen opens over YouTube |
+| 10 Background launch fallback | ✅ (fixed) | Without the permission Android aborts the start (`Abort background activity starts`) and the fallback notification is posted but **never shown**: Android TV only lists it in the notification panel. Added: a toast over the app in use (the PIN code for ~10 s, or "… is mirroring; … open AynaCast TV") and a permission dialog when the app is opened without it |
 
-Not run on this TV: 2, 3, 5, 7c, 8–12.
+Not run on this TV: 2, 3, 5, 7c, 9, 11, 12.
 
 **Discovery:** the TV once stopped receiving any multicast/broadcast on Wi-Fi (iPhone could not see it,
 the Mac only from its cache; not even Chromecast answered queries). Turning the TV's Wi-Fi off and on

@@ -49,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -115,6 +116,8 @@ class AirPlaySettingsActivity : ComponentActivity() {
             var showPairedDevices by remember { mutableStateOf(false) }
             val canDrawOverlays by overlayPermissionGranted.collectAsState()
             val overlayUnavailable by overlaySettingsUnavailable.collectAsState()
+            // Asked once each time the app is opened while the permission is missing.
+            var overlayPromptDone by rememberSaveable { mutableStateOf(false) }
 
             AirPlayTvTheme(themeMode = appSettings.themeMode) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -171,6 +174,16 @@ class AirPlaySettingsActivity : ComponentActivity() {
                             overlaySettingsUnavailable.value = !openOverlayPermissionSettings()
                         }
                     )
+                    if (!canDrawOverlays && !overlayPromptDone && !showPairedDevices) {
+                        OverlayPermissionDialog(
+                            language = appSettings.language,
+                            onGrant = {
+                                overlayPromptDone = true
+                                overlaySettingsUnavailable.value = !openOverlayPermissionSettings()
+                            },
+                            onLater = { overlayPromptDone = true }
+                        )
+                    }
                     if (showPairedDevices) {
                         PairedDevicesDialog(
                             devices = pairedDevices,

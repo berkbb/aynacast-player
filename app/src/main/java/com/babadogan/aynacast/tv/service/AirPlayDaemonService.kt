@@ -24,6 +24,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.babadogan.aynacast.tv.R
 import com.babadogan.aynacast.tv.engine.AirPlayAudioFormat
@@ -69,6 +70,8 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         private const val NOTIFICATION_ID = 1001
         private const val STREAM_NOTIFICATION_ID = 1002
         const val PIN_NOTIFICATION_ID = 1003
+        // ~10 s of the PIN on screen (Android queues at most 5 toasts per app).
+        private const val PIN_TOAST_REPEATS = 3
         const val VIDEO_CAST_NOTIFICATION_ID = 1004
         private const val ACTION_STOP_STREAMING = "com.babadogan.aynacast.tv.action.STOP_STREAMING"
 
@@ -583,7 +586,10 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
                 PinCodeActivity.createIntent(this),
                 PIN_NOTIFICATION_ID,
                 AirPlayStrings.pinTitle(language),
-                AirPlayStrings.notificationPinText(pin, language)
+                AirPlayStrings.notificationPinText(pin, language),
+                // The code must stay readable long enough to type it in.
+                toastText = AirPlayStrings.toastPin(pin, language),
+                toastRepeats = PIN_TOAST_REPEATS
             )
         }
     }
@@ -599,11 +605,13 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         Log.i(TAG, "Video casting started")
         VideoCastSession.play(url, startSeconds)
         mainHandler.post {
+            val title = AirPlayStrings.notificationVideoCastTitle(language)
             launchScreen(
                 VideoCastActivity.createIntent(this),
                 VIDEO_CAST_NOTIFICATION_ID,
-                AirPlayStrings.notificationVideoCastTitle(language),
-                AirPlayStrings.notificationVideoCastText(language)
+                title,
+                AirPlayStrings.notificationVideoCastText(language),
+                toastText = AirPlayStrings.toastOpenApp("$title.", language)
             )
         }
     }
@@ -661,26 +669,40 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
             return
         }
         val clientName = AirPlaySessionManager.clientMetadata.value.deviceName
+        val title = AirPlayStrings.notificationStreamTitle(clientName, language)
         launchScreen(
             AirPlayPlayerActivity.createIntent(this),
             STREAM_NOTIFICATION_ID,
-            AirPlayStrings.notificationStreamTitle(clientName, language),
-            AirPlayStrings.notificationStreamText(language)
+            title,
+            AirPlayStrings.notificationStreamText(language),
+            toastText = AirPlayStrings.toastOpenApp("$title.", language)
         )
     }
 
     /**
      * Opens one of the receiver's screens from the background. Android 10+ silently blocks that
      * unless the app may draw over other apps, so a notification then lets the user open it.
+     * Android TV does not pop notifications up over the app in use, though (they only reach the
+     * notification list), so a toast, which a background app may still show, says so on screen.
      */
-    private fun launchScreen(intent: Intent, notificationId: Int, title: String, text: String) {
+    private fun launchScreen(
+        intent: Intent,
+        notificationId: Int,
+        title: String,
+        text: String,
+        toastText: String,
+        toastRepeats: Int = 1
+    ) {
         try {
             startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Could not open ${intent.component?.shortClassName}", e)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "No permission to open ${intent.component?.shortClassName} from the background; showing a notification and a toast")
             showScreenNotification(intent, notificationId, title, text)
+            // Queued toasts play one after another; each long toast lasts about 3.5 s.
+            repeat(toastRepeats) { Toast.makeText(this, toastText, Toast.LENGTH_LONG).show() }
         }
     }
 

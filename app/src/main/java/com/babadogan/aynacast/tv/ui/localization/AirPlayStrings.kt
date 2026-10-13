@@ -248,8 +248,24 @@ object AirPlayStrings {
     }
 
     fun overlayPermissionDesc(lang: AppLanguage): String = when (lang) {
-        AppLanguage.TR -> "Android 10 ve üzeri sürümler, başka bir uygulama açıkken yansıtma ekranının kendiliğinden açılması için \"Diğer uygulamaların üzerinde göster\" iznini ister. İzin verilmezse yansıtma başladığında bildirimden açabilirsiniz."
-        AppLanguage.EN -> "Android 10 and later require the \"Display over other apps\" permission so the mirroring screen can open by itself while another app is in use. Without it, open the mirroring screen from the notification."
+        AppLanguage.TR -> "Android 10 ve üzeri sürümler, başka bir uygulama açıkken yansıtma ekranının kendiliğinden açılması için \"Diğer uygulamaların üzerinde göster\" iznini ister. İzin verilmezse ekranda kısa bir uyarı çıkar ve yansıtmayı görmek için AynaCast TV'yi açmanız gerekir."
+        AppLanguage.EN -> "Android 10 and later require the \"Display over other apps\" permission so the mirroring screen can open by itself while another app is in use. Without it, a short message appears on screen and you have to open AynaCast TV to see the mirroring."
+    }
+
+    fun overlayPermissionLater(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Daha Sonra"
+        AppLanguage.EN -> "Later"
+    }
+
+    /** Toast over another app when a screen could not open by itself (no overlay permission). */
+    fun toastOpenApp(message: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "$message \"Diğer uygulamaların üzerinde göster\" izni verilmediği için ekran öne getirilemedi; görmek için AynaCast TV'yi açın."
+        AppLanguage.EN -> "$message The screen could not come to the front because \"Display over other apps\" is not allowed; open AynaCast TV to see it."
+    }
+
+    fun toastPin(pin: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AirPlay kodu: $pin — iPhone, iPad veya Mac'inizde girin. (İzin verilmediği için kod ekranı öne getirilemedi.)"
+        AppLanguage.EN -> "AirPlay code: $pin — enter it on your iPhone, iPad or Mac. (The code screen could not come to the front: permission not granted.)"
     }
 
     fun overlayPermissionButton(lang: AppLanguage): String = when (lang) {
