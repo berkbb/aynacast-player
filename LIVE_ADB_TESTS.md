@@ -426,6 +426,7 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | 3 iPhone mirroring | ✅ | Hardware decoder, portrait 500x1080, avg 47 fps (min 30), up to 5.6 Mbps, no drops; lock/unlock pauses and resumes. A YouTube video started during mirroring is handed over to video casting and plays fine. Mirroring **audio** from the iPhone not checked (same AAC-ELD path as the Mac) |
 | 4 Mac mirroring | ✅ | Fixed: `OMX.MS.AVC.Decoder` rejects `KEY_LOW_LATENCY`, Android 11 then fails `configure()` and the software decoder (~40 fps, 467 dropped frames per minute) lagged visibly. Now hardware, 42–60 fps at 2–3 Mbps, no drops. Fixed: constant audio crackle (jitter buffer, see the audio issue above) |
 | 5a–5d Session resilience | ✅ (5c fixed) | 5a TEARDOWN, 5b ended after 15 s, 5d picture back with GOP replay. 5c failed at first: the iPhone could not find the TV after rejoining Wi-Fi (the TV receives no multicast, also after a reboot). Fixed with "Refresh Visibility" (re-announce every 60 s while idle): the TV appeared after ~30 s |
+| 5e–5h Session resilience | ✅ | 5e Mac took over from the iPhone (`another sender took over`); 5f a connection to 7100 from another address (the TV's own shell) was ignored, mirroring went on at 41–50 fps; 5g `stopped on the receiver`, TV still listed; 5h service stopped and restarted, records registered again (the moment it was gone from the list was not observed) |
 | 6 Music + Now Playing | ✅ | Apple Music (ALAC) through the jitter buffer, see 4f below |
 | 7a Safari / URL video | ✅ / ⚠️ | Remote play/pause (`KEYCODE_MEDIA_PLAY_PAUSE`, scan 164) and OK reach the player and are reported to the iPhone; iPhone pause/play is followed. Started from Safari, the iPhone keeps a screen mirroring session open and several times ended the cast itself after 6–24 s (`/rate 0` + `/stop`, then mirroring again) while the TV was playing normally |
 | 7b YouTube | ✅ | |
@@ -434,7 +435,7 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | 11 Boot + persistent identity | ✅ | `BootReceiver` started the service ~45 s after boot completed (other apps' boot broadcasts first); same public key `9fd6a4ed…`; iPhone sees the TV without opening the app; the paired Mac plays without being asked for the code again |
 | 10 Background launch fallback | ✅ (fixed) | Without the permission Android aborts the start (`Abort background activity starts`) and the fallback notification is posted but **never shown**: Android TV only lists it in the notification panel. Added: a toast over the app in use (the PIN code for ~10 s, or "… is mirroring; … open AynaCast TV") and a permission dialog when the app is opened without it |
 
-Not run on this TV: 2, 5, 7c, 12. Mac Music app: through "Arcelik Android TV (Mac)" (see below).
+Not run on this TV: 2, 7c, 12. Mac Music app: through "Arcelik Android TV (Mac)" (see below).
 
 **Discovery:** chronic on this TV (also after a reboot): it receives no multicast/broadcast on Wi-Fi.
 The "Refresh Visibility" setting (on by default) re-registers the mDNS records every 60 s while idle
