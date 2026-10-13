@@ -61,6 +61,9 @@ object AirPlayNativeBridge {
         /** One /pair-setup-pin step (see PinPairingManager.handleStep); null when it fails. */
         fun onPinSetup(step: Int, user: String, input: Array<ByteArray>): Array<ByteArray>?
 
+        /** Classic AirPlay (RAOP) RSA: see [AirPortRsa.apply]; null when it fails. */
+        fun onRsa(mode: Int, input: ByteArray): ByteArray?
+
         /** Video casting: play [url] (direct URL or the receiver's own HLS master) from [startSeconds]. */
         fun onVideoCastPlay(url: String, startSeconds: Double)
         fun onVideoCastSeek(positionSeconds: Double)

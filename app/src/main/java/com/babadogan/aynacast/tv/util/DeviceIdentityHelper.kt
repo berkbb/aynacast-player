@@ -125,6 +125,18 @@ object DeviceIdentityHelper {
         return mac.replace(":", "").replace("-", "").uppercase(Locale.ROOT)
     }
 
+    /**
+     * MAC prefix of the classic AirPlay (RSA) record: the receiver's MAC with the lowest bit of the
+     * last byte flipped, so macOS lists it as a separate speaker (with the same MAC it merges it into
+     * the main receiver and uses FairPlay 2). raop_rtsp_server.cpp signs Apple-Challenge with it.
+     */
+    fun getClassicRaopMacPrefix(mac: String): String {
+        val prefix = getRaopMacPrefix(mac)
+        if (prefix.length != 12) return prefix
+        val last = prefix.substring(10).toInt(16) xor 0x01
+        return prefix.substring(0, 10) + String.format(Locale.ROOT, "%02X", last)
+    }
+
     internal fun isUsableMac(mac: ByteArray?): Boolean =
         mac != null && mac.size == 6 && mac.any { it != 0.toByte() } && !mac.contentEquals(PLACEHOLDER_MAC)
 

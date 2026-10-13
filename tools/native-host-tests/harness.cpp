@@ -29,6 +29,13 @@ int main() {
     server.setCoverArtCallback([](const uint8_t*, size_t n) { printf("EVT coverart size=%zu\n", n); });
     server.setProgressCallback([](int64_t pos, int64_t dur) { printf("EVT progress pos=%lld dur=%lld\n", (long long)pos, (long long)dur); });
     server.setPinStartCallback([]() { printf("EVT pinstart\n"); });
+    server.setRsaCallback([](int mode, const std::vector<uint8_t>& in, std::vector<uint8_t>& out) -> bool {
+        // Stub of the Java AirPortRsa: fixed outputs, so the driver can check the classic AirPlay plumbing.
+        printf("EVT rsa mode=%d len=%zu\n", mode, in.size());
+        if (mode == 0) { out.assign(256, 0xAA); return true; }
+        if (mode == 1 && in.size() == 256) { out.assign(16, 0x42); return true; }
+        return false;
+    });
     server.setPinSetupCallback([](int step, const std::string& user, const std::vector<std::vector<uint8_t>>& in,
                                   std::vector<std::vector<uint8_t>>& out) -> bool {
         // Stub of the Java SRP side: fixed values let the driver check routing and plist encoding.

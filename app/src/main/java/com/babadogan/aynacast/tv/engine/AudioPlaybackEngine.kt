@@ -18,8 +18,8 @@ import java.nio.ByteBuffer
  *
  * ALAC streams arrive already decoded to 16-bit PCM by the native core. AAC-ELD (screen mirroring)
  * and AAC-LC streams arrive as encoded access units and are decoded with MediaCodec here.
- * The PCM plays through [PcmJitterOutput]; in timestamp-sync mode it is placed into an AudioTrack
- * directly, by sender timestamp.
+ * The PCM plays through [PcmJitterOutput]; mirroring audio in timestamp-sync mode is placed into an
+ * AudioTrack directly, by sender timestamp.
  * All methods are called from native server threads and are serialized by the object monitor.
  */
 object AudioPlaybackEngine {
@@ -267,7 +267,8 @@ object AudioPlaybackEngine {
      * is dropped. Otherwise it is played as soon as possible.
      */
     private fun writePcmAt(data: ByteArray, length: Int, localTimeNs: Long) {
-        if (!AvSync.enabled) {
+        // Timestamp sync aligns mirroring audio (AAC-ELD) with its picture; music has none.
+        if (!AvSync.enabled || codec != AirPlayAudioFormat.CODEC_AAC_ELD) {
             writeBuffered(data, length)
             return
         }

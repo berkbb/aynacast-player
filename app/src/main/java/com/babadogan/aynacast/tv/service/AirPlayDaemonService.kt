@@ -30,6 +30,7 @@ import com.babadogan.aynacast.tv.R
 import com.babadogan.aynacast.tv.engine.AirPlayAudioFormat
 import com.babadogan.aynacast.tv.engine.AirPlayFeatures
 import com.babadogan.aynacast.tv.engine.AirPlayNativeBridge
+import com.babadogan.aynacast.tv.engine.AirPortRsa
 import com.babadogan.aynacast.tv.engine.AudioPlaybackEngine
 import com.babadogan.aynacast.tv.engine.AvSync
 import com.babadogan.aynacast.tv.engine.VideoDecoderEngine
@@ -417,7 +418,28 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
             setAttribute("sv", "false")
             setAttribute("pk", pkHex) // Advertised by RPiPlay/UxPlay as well
         }
-        return listOf(airplayServiceInfo, raopServiceInfo)
+        // 3. Classic AirPlay speaker for the macOS Music app: with the records above it only offers
+        // FairPlay version 2, which cannot be implemented; to a classic-only speaker it offers RSA
+        // (AirPortRsa). Its own MAC keeps macOS from merging it into the receiver above.
+        val classicServiceInfo = NsdServiceInfo().apply {
+            serviceName = "${DeviceIdentityHelper.getClassicRaopMacPrefix(macAddress)}@$deviceName (Mac)"
+            serviceType = "_raop._tcp"
+            port = RTSP_PORT
+            setAttribute("txtvers", "1")
+            setAttribute("ch", "2")
+            setAttribute("cn", "0,1")
+            setAttribute("et", "0,1")
+            setAttribute("ek", "1")
+            setAttribute("sv", "false")
+            setAttribute("da", "true")
+            setAttribute("sr", "44100")
+            setAttribute("ss", "16")
+            setAttribute("pw", "false")
+            setAttribute("vn", "3")
+            setAttribute("tp", "UDP")
+            setAttribute("md", "0,1,2")
+        }
+        return listOf(airplayServiceInfo, raopServiceInfo, classicServiceInfo)
     }
 
     /**
@@ -600,6 +622,8 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         if (step == 1 && !PinPairingManager.isPairing()) onPinStart()
         return PinPairingManager.handleStep(step, user, input)
     }
+
+    override fun onRsa(mode: Int, input: ByteArray): ByteArray? = AirPortRsa.apply(mode, input)
 
     override fun onVideoCastPlay(url: String, startSeconds: Double) {
         Log.i(TAG, "Video casting started")

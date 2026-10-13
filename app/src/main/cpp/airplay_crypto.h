@@ -42,6 +42,9 @@ public:
 
     // Audio stream decryption (AES-128-CBC)
     bool hasAudioKey() const;
+    // Classic AirPlay (RAOP): the audio key comes from ANNOUNCE (RSA-unwrapped), used as is.
+    // An empty key means an unencrypted stream.
+    void setLegacyAudioKey(const std::vector<uint8_t>& key, const std::vector<uint8_t>& iv);
     bool decryptAudioPayload(uint8_t* payload, size_t length);
 
     void resetSessionCrypto();

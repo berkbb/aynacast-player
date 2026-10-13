@@ -79,6 +79,10 @@ public:
     void setProgressCallback(ProgressCallback cb) { onProgress_ = std::move(cb); }
     void setPinStartCallback(PinStartCallback cb) { onPinStart_ = std::move(cb); }
     void setPinSetupCallback(PinSetupCallback cb) { onPinSetup_ = std::move(cb); }
+    // Classic AirPlay RSA with the AirPort Express key (mode 0: sign the Apple-Challenge,
+    // 1: unwrap the ANNOUNCE rsaaeskey). Implemented in Java (AirPortRsa).
+    using RsaCallback = std::function<bool(int mode, const std::vector<uint8_t>& in, std::vector<uint8_t>& out)>;
+    void setRsaCallback(RsaCallback cb) { onRsa_ = std::move(cb); }
 
     // AirPlay video casting (URL / YouTube HLS). closeConnections is supplied by the server itself.
     void setVideoCastCallbacks(VideoCastHandler::Callbacks callbacks);
@@ -121,6 +125,13 @@ private:
     void requestAudioResend(int controlFd);
     int64_t audioLocalTimeLocked(uint32_t rtpTime);
     void configureAudioStream(const BplistValue* stream);
+    // ct: 2 ALAC, 4 AAC-LC, 8 AAC-ELD (0: infer from spf); controlPort: the sender's RTCP port.
+    void configureAudio(uint64_t ct, uint64_t spf, uint64_t sr, uint16_t controlPort);
+    // Classic AirPlay (RAOP, e.g. the macOS Music app): RSA challenge, SDP ANNOUNCE, Transport SETUP.
+    void answerAppleChallenge(const RtspRequest& req, RtspResponse& resp, int clientFd);
+    void handleLegacyAnnounce(const RtspRequest& req, RtspResponse& resp, uint64_t connectionId);
+    void handleLegacySetup(const RtspRequest& req, RtspResponse& resp, const std::string& clientIp,
+                           uint64_t connectionId, int clientFd);
     void handlePairSetupPin(const RtspRequest& req, RtspResponse& resp);
     void stopAudioStream();
     void stopVideoStream();
@@ -140,6 +151,10 @@ private:
     // TEARDOWN and session end are serialised by sessionMutex_.
     std::mutex sessionMutex_;
     std::atomic<uint64_t> sessionConnection_{0};
+    // The session was set up by a classic AirPlay sender (no /feedback; see kClassicIdleTimeout).
+    std::atomic<bool> classicSession_{false};
+    // steady_clock ticks of the last audio packet, for the classic session watchdog.
+    std::atomic<int64_t> lastAudioPacketTicks_{0};
     int sessionConnectionFd_{-1};
 
     int rtspPort_{7000};
@@ -154,6 +169,17 @@ private:
     std::string deviceName_{"PhilipsTV"};
     std::string macAddress_{"00:11:22:33:44:55"};
     std::string clientName_;
+    // The last classic-AirPlay ANNOUNCE: its audio key (RSA-unwrapped), IV and ALAC parameters,
+    // applied by that connection's Transport SETUP.
+    struct LegacyAnnounce {
+        uint64_t connectionId{0};
+        std::vector<uint8_t> aesKey;
+        std::vector<uint8_t> aesIv;
+        uint32_t samplesPerFrame{352};
+        uint32_t sampleRate{44100};
+        std::string clientName;
+    };
+    LegacyAnnounce legacyAnnounce_;
     int displayWidth_{1920};
     int displayHeight_{1080};
     float displayRefreshRate_{50.0f};
@@ -212,6 +238,7 @@ private:
     ProgressCallback onProgress_;
     PinStartCallback onPinStart_;
     PinSetupCallback onPinSetup_;
+    RsaCallback onRsa_;
 };
 
 } // namespace airplay

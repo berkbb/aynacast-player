@@ -25,6 +25,7 @@ static jmethodID g_midOnCoverArt = nullptr;
 static jmethodID g_midOnPlaybackProgress = nullptr;
 static jmethodID g_midOnPinStart = nullptr;
 static jmethodID g_midOnPinSetup = nullptr;
+static jmethodID g_midOnRsa = nullptr;
 static jmethodID g_midOnVideoCastPlay = nullptr;
 static jmethodID g_midOnVideoCastSeek = nullptr;
 static jmethodID g_midOnVideoCastRate = nullptr;
@@ -209,6 +210,7 @@ Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(
         g_midOnPlaybackProgress = findMethod(env, clazz, "onPlaybackProgress", "(JJ)V");
         g_midOnPinStart = findMethod(env, clazz, "onPinStart", "()V");
         g_midOnPinSetup = findMethod(env, clazz, "onPinSetup", "(ILjava/lang/String;[[B)[[B");
+        g_midOnRsa = findMethod(env, clazz, "onRsa", "(I[B)[B");
         g_midOnVideoCastPlay = findMethod(env, clazz, "onVideoCastPlay", "(Ljava/lang/String;D)V");
         g_midOnVideoCastSeek = findMethod(env, clazz, "onVideoCastSeek", "(D)V");
         g_midOnVideoCastRate = findMethod(env, clazz, "onVideoCastRate", "(F)V");
@@ -354,6 +356,21 @@ Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(
             e->CallVoidMethod(g_listenerObj, g_midOnPinStart);
             clearPendingException(e, "onPinStart");
         }
+    });
+
+    g_server->setRsaCallback([](int mode, const std::vector<uint8_t>& in, std::vector<uint8_t>& out) -> bool {
+        JNIEnv* e = getJniEnv();
+        if (!e || !g_listenerObj || !g_midOnRsa) return false;
+        jbyteArray jIn = toByteArray(e, in.data(), in.size());
+        auto jOut = static_cast<jbyteArray>(e->CallObjectMethod(g_listenerObj, g_midOnRsa, static_cast<jint>(mode), jIn));
+        clearPendingException(e, "onRsa");
+        e->DeleteLocalRef(jIn);
+        if (!jOut) return false;
+        jsize len = e->GetArrayLength(jOut);
+        out.resize(static_cast<size_t>(len));
+        e->GetByteArrayRegion(jOut, 0, len, reinterpret_cast<jbyte*>(out.data()));
+        e->DeleteLocalRef(jOut);
+        return true;
     });
 
     g_server->setPinSetupCallback([](int step, const std::string& user,

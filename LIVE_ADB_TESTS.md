@@ -374,13 +374,26 @@ there does not start until its buffer is full, and once stopped consuming after 
 iPhone music (ALAC); whether the ~0.35 s audio delay is acceptable for lip-sync (otherwise use the
 sync setting, which delays the picture to match).
 
-### Mac Music app → TV: "unknown error 400" (not supported)
+### Mac Music app → TV: classic AirPlay (RSA) through a second entry
 
-The Music app on macOS connects with **FairPlay version 2** (`Rejecting malformed FairPlay key message
-(version byte 02, …)`), with the PIN on or off. The FairPlay code (from UxPlay) only implements version 3,
-and UxPlay rejects version 2 the same way; there is no open-source FairPlay 2. Mac screen mirroring uses
-version 3 and plays sound (Test 4), and iPhone Apple Music works (Test 6). A possible route is RSA
-(AirPort Express, `et=1`) audio encryption as in shairport-sync.
+To the main receiver the macOS Music app only speaks **FairPlay version 2** (`Rejecting malformed
+FairPlay key message (version byte 02, …)` → "unknown error 400"), with the PIN on or off and whatever
+`et` or feature bits are advertised; no open-source receiver implements FairPlay 2 (UxPlay issue #570).
+To a classic-only `_raop` speaker it uses **RSA** (AirPort Express key) instead, so the TV also
+advertises **"<name> (Mac)"**: `_raop` only, `et=0,1 ek=1`, MAC = the receiver's with the last bit
+flipped (with the same MAC macOS merges it into the main receiver). `AirPortRsa` signs the
+`Apple-Challenge` and unwraps the ANNOUNCE `rsaaeskey`; ALAC, the jitter buffer and NTP are shared.
+
+**Steps:** Mac Music → AirPlay → **"Arcelik Android TV (Mac)"**; play over a minute; move the volume
+slider in the AirPlay menu.
+
+**Expected log:** `Answered the classic AirPlay Apple-Challenge`, `Classic AirPlay ANNOUNCE from 'Mac':
+ALAC 352 frames/packet, 44100 Hz, RSA-encrypted`, `Classic AirPlay SETUP: …`, `Sender volume changed`
+values that follow the slider, `Audio output: … target 400 ms … rebuffers +0`.
+
+**Result (13 Oct 2026, Arçelik):** ✅ plays; classic senders send no `/feedback`, so their session now
+lives on audio packets (`kClassicIdleTimeout`, 120 s; it ended after 15 s before). Not yet: PIN for this
+entry (macOS asks a password for `pw=true`), and whether iPhones are confused by the extra speaker entry.
 
 ### Test 12 (long run / resource usage) not done yet
 
@@ -412,7 +425,7 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | 9 Audio/video sync (On) | ✅ | Mac mirroring: lip sync good by ear; HW decoder, avg 45 fps, no drops; old direct-AudioTrack path: 0 underruns, buffer at 600–680 of 700 ms (≈0.6 s latency), small overflow drops (13 KB at the start, then 1–3 KB now and then). If it crackles, the 700 ms track is the first thing to raise |
 | 10 Background launch fallback | ✅ (fixed) | Without the permission Android aborts the start (`Abort background activity starts`) and the fallback notification is posted but **never shown**: Android TV only lists it in the notification panel. Added: a toast over the app in use (the PIN code for ~10 s, or "… is mirroring; … open AynaCast TV") and a permission dialog when the app is opened without it |
 
-Not run on this TV: 2, 5, 7c, 11, 12. Mac Music app: not supported (see below).
+Not run on this TV: 2, 5, 7c, 11, 12. Mac Music app: through "Arcelik Android TV (Mac)" (see below).
 
 **Discovery:** the TV once stopped receiving any multicast/broadcast on Wi-Fi (iPhone could not see it,
 the Mac only from its cache; not even Chromecast answered queries). Turning the TV's Wi-Fi off and on

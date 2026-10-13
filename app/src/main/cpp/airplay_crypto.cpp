@@ -564,6 +564,14 @@ bool AirPlayCrypto::hasAudioKey() const {
     return hasSessionAesKey_ && !sessionAesIv_.empty();
 }
 
+void AirPlayCrypto::setLegacyAudioKey(const std::vector<uint8_t>& key, const std::vector<uint8_t>& iv) {
+    std::lock_guard<std::mutex> lock(cryptoMutex_);
+    bool valid = key.size() == 16 && iv.size() == 16;
+    sessionAesKey_ = valid ? key : std::vector<uint8_t>();
+    sessionAesIv_ = valid ? iv : std::vector<uint8_t>();
+    hasSessionAesKey_ = valid;
+}
+
 bool AirPlayCrypto::decryptAudioPayload(uint8_t* payload, size_t length) {
     if (!payload || length == 0) return false;
 

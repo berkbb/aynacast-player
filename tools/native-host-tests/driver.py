@@ -3,6 +3,7 @@
 The script plays the Apple sender: RTSP requests, a pair-verify client built on the `cryptography`
 package, an NTP timing responder, the mirroring video connection and RTP/RTCP audio.
 """
+import base64
 import hashlib, os, plistlib, socket, struct, subprocess, sys, threading, time
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -907,6 +908,53 @@ s.sendall(request("SETUP", "rtsp://x/3", 121, bplist({"ekey": os.urandom(72), "e
                   "application/x-apple-binary-plist"))
 check(recv_response(s)[0] == "RTSP/1.0 200 OK", "SETUP after a refused fp-setup is handled safely")
 s.sendall(request("TEARDOWN", "rtsp://x/3", 122)); recv_response(s)
+
+# 16c. Classic AirPlay (RAOP, e.g. the macOS Music app): RSA challenge, SDP ANNOUNCE, Transport SETUP
+def raw(sock, text, body=b""):
+    if body:
+        text += f"Content-Length: {len(body)}\r\n"
+    sock.sendall(text.encode() + b"\r\n" + body)
+    return recv_response(sock)
+
+
+drain("EVT rsa"); drain("EVT audioconfig")
+c = connect()
+st, hdrs, _ = raw(c, "OPTIONS * RTSP/1.0\r\nCSeq: 1\r\nApple-Challenge: IXAFaNnoPUIBruSmnGvq5w\r\n")
+ev = wait_event("EVT rsa")
+check(st == "RTSP/1.0 200 OK" and ev == "EVT rsa mode=0 len=32", f"Apple-Challenge signed over challenge+IPv4+MAC padded to 32 ({ev})")
+resp_b64 = hdrs.get("apple-response", "")
+check(len(resp_b64) == 342 and "=" not in resp_b64 and base64.b64decode(resp_b64 + "==") == b"\xaa" * 256,
+      f"Apple-Response is the unpadded base64 signature ({len(resp_b64)} chars)")
+
+def sdp(rtpmap, with_key=True):
+    lines = ["v=0", "o=iTunes 1 0 IN IP4 127.0.0.1", "s=iTunes", "c=IN IP4 127.0.0.1", "t=0 0",
+             "m=audio 0 RTP/AVP 96", f"a=rtpmap:96 {rtpmap}", "a=fmtp:96 352 0 16 40 10 14 2 255 0 0 44100"]
+    if with_key:
+        lines += ["a=rsaaeskey:" + base64.b64encode(b"\x01" * 256).decode().rstrip("="),
+                  "a=aesiv:" + base64.b64encode(b"\x02" * 16).decode().rstrip("=")]
+    return ("\r\n".join(lines) + "\r\n").encode()
+
+st, _, _ = raw(c, "ANNOUNCE rtsp://127.0.0.1/1 RTSP/1.0\r\nCSeq: 2\r\nContent-Type: application/sdp\r\n", sdp("mpeg4-generic/44100/2"))
+check(st == "RTSP/1.0 415 Unsupported Media Type", f"classic ANNOUNCE with AAC refused ({st})")
+st, _, _ = raw(c, "ANNOUNCE rtsp://127.0.0.1/1 RTSP/1.0\r\nCSeq: 3\r\nContent-Type: application/sdp\r\nX-Apple-Client-Name: Test Mac\r\n", sdp("AppleLossless"))
+ev = wait_event("EVT rsa")
+check(st == "RTSP/1.0 200 OK" and ev == "EVT rsa mode=1 len=256", f"ALAC ANNOUNCE unwraps the RSA audio key ({st}, {ev})")
+other = connect()
+st, _, _ = raw(other, "SETUP rtsp://127.0.0.1/1 RTSP/1.0\r\nCSeq: 1\r\nTransport: RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;control_port=6001;timing_port=6002\r\n")
+check(st == "RTSP/1.0 400 Bad Request", f"classic SETUP without its own ANNOUNCE refused ({st})")
+other.close()
+st, hdrs, _ = raw(c, "SETUP rtsp://127.0.0.1/1 RTSP/1.0\r\nCSeq: 4\r\nTransport: RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;control_port=6001;timing_port=6002\r\n")
+transport = hdrs.get("transport", "")
+check(st == "RTSP/1.0 200 OK" and "server_port=7011" in transport and "control_port=7012" in transport and "timing_port=" in transport,
+      f"classic SETUP answers with the receiver's UDP ports ({transport})")
+ev = wait_event("EVT audioconfig")
+check(ev == "EVT audioconfig codec=0 sr=44100 ch=2 spf=352", f"classic ALAC stream configured from the SDP fmtp ({ev})")
+st, _, _ = raw(c, "RECORD rtsp://127.0.0.1/1 RTSP/1.0\r\nCSeq: 5\r\nRange: npt=0-\r\n")
+check(st == "RTSP/1.0 200 OK", f"classic RECORD accepted ({st})")
+check(wait_event("EVT audioconfig", 6) is None, "classic session outlives the /feedback watchdog (no /feedback sent)")
+raw(c, "TEARDOWN rtsp://127.0.0.1/1 RTSP/1.0\r\nCSeq: 6\r\n")
+check(wait_event("EVT audioconfig") == "EVT audioconfig codec=-1 sr=0 ch=0 spf=0", "classic TEARDOWN stops audio")
+c.close()
 
 # 17. stop() with live, idle connections (RTSP + NTP) must return promptly and cleanly
 idle_rtsp = connect()

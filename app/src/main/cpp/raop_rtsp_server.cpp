@@ -66,6 +66,9 @@ constexpr size_t kAlacReadSlackBytes = kMaxAlacSamplesPerFrame * 2 * 110 / 8 + 1
 #define AIRPLAY_FEEDBACK_TIMEOUT_SEC 15
 #endif
 constexpr auto kFeedbackTimeout = std::chrono::seconds(AIRPLAY_FEEDBACK_TIMEOUT_SEC);
+// Classic AirPlay senders (the macOS Music app) send no /feedback: their session lives while
+// requests or audio packets arrive, and ends after this much silence or when they disconnect.
+constexpr auto kClassicIdleTimeout = std::chrono::seconds(120);
 constexpr int kRtspPollSeconds = 1;
 // AAC-ELD streams open with "no data" filler packets carrying this 4-byte payload (see UxPlay raop_rtp.c).
 constexpr uint8_t kNoDataMarker[4] = {0x00, 0x68, 0x34, 0x00};
@@ -261,6 +264,74 @@ alac_file* createAlacDecoder(uint32_t samplesPerFrame, uint32_t sampleRate) {
 
     alac_set_info(decoder, reinterpret_cast<char*>(decoderInfo));
     return decoder;
+}
+
+// Request header lookup; RTSP header names are case-insensitive.
+std::string headerValue(const RtspRequest& req, const char* lowerName) {
+    for (const auto& kv : req.headers) {
+        if (toLower(kv.first) == lowerName) return trim(kv.second);
+    }
+    return std::string();
+}
+
+// Standard base64; senders omit the '=' padding (Apple-Challenge, rsaaeskey).
+std::vector<uint8_t> base64Decode(const std::string& in) {
+    std::vector<uint8_t> out;
+    uint32_t acc = 0;
+    int bits = 0;
+    for (char c : in) {
+        int v;
+        if (c >= 'A' && c <= 'Z') v = c - 'A';
+        else if (c >= 'a' && c <= 'z') v = c - 'a' + 26;
+        else if (c >= '0' && c <= '9') v = c - '0' + 52;
+        else if (c == '+') v = 62;
+        else if (c == '/') v = 63;
+        else continue; // padding, whitespace
+        acc = (acc << 6) | static_cast<uint32_t>(v);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<uint8_t>((acc >> bits) & 0xFF));
+        }
+    }
+    return out;
+}
+
+// Base64 without '=' padding, as Apple-Response expects (shairport-sync strips it too).
+std::string base64EncodeNoPadding(const std::vector<uint8_t>& data) {
+    static const char* chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    uint32_t acc = 0;
+    int bits = 0;
+    for (uint8_t b : data) {
+        acc = (acc << 8) | b;
+        bits += 8;
+        while (bits >= 6) {
+            bits -= 6;
+            out.push_back(chars[(acc >> bits) & 0x3F]);
+        }
+    }
+    if (bits > 0) out.push_back(chars[(acc << (6 - bits)) & 0x3F]);
+    return out;
+}
+
+// "A2:E2:2A:F7:C3:BC" -> 6 bytes.
+std::vector<uint8_t> macBytes(const std::string& mac) {
+    std::vector<uint8_t> out;
+    for (size_t i = 0; i + 1 < mac.size() && out.size() < 6; ++i) {
+        if (!std::isxdigit(static_cast<unsigned char>(mac[i])) || !std::isxdigit(static_cast<unsigned char>(mac[i + 1]))) continue;
+        out.push_back(static_cast<uint8_t>(std::strtoul(mac.substr(i, 2).c_str(), nullptr, 16)));
+        ++i;
+    }
+    return out;
+}
+
+// "...;control_port=6001;timing_port=6002" -> the number after [key], or 0.
+uint16_t transportPort(const std::string& transport, const char* key) {
+    size_t pos = transport.find(key);
+    if (pos == std::string::npos) return 0;
+    long port = std::strtol(transport.c_str() + pos + std::strlen(key), nullptr, 10);
+    return (port > 0 && port <= 0xFFFF) ? static_cast<uint16_t>(port) : 0;
 }
 
 } // namespace
@@ -742,6 +813,17 @@ void RaopRtspServer::handleClientConnection(int clientFd, const std::string& cli
             std::lock_guard<std::mutex> lock(configMutex_);
             if (!sessionClientIp_.empty() && sessionClientIp_ == clientIp) return false;
         }
+        if (ownsSession && classicSession_.load()) {
+            auto lastAudio = std::chrono::steady_clock::time_point(
+                std::chrono::steady_clock::duration(lastAudioPacketTicks_.load()));
+            auto quiet = std::chrono::steady_clock::now() - std::max(lastRequest, lastAudio);
+            if (isStreaming_.load() && quiet > kClassicIdleTimeout) {
+                LOGW("Classic AirPlay sender silent for %d s; ending the session",
+                     static_cast<int>(kClassicIdleTimeout.count()));
+                return true;
+            }
+            return false;
+        }
         // A sender that stops sending /feedback while owning the session has frozen or vanished
         // even if its TCP connection is still open.
         if (isStreaming_.load() && ownsSession && idle > kFeedbackTimeout) {
@@ -825,6 +907,7 @@ bool RaopRtspServer::pinAllows(uint64_t connectionId) {
 }
 
 void RaopRtspServer::endSessionLocked(const char* reason) {
+    classicSession_.store(false);
     bool wasStreaming = isStreaming_.exchange(false);
     sessionConnection_.store(0);
     sessionConnectionFd_ = -1;
@@ -906,9 +989,12 @@ void RaopRtspServer::handlePairSetupPin(const RtspRequest& req, RtspResponse& re
 }
 
 void RaopRtspServer::configureAudioStream(const BplistValue* stream) {
-    uint64_t ct = stream ? stream->intFor("ct", 0) : 0;
-    uint64_t spf = stream ? stream->intFor("spf", 0) : 0;
-    uint64_t sr = stream ? stream->intFor("sr", 44100) : 44100;
+    configureAudio(stream ? stream->intFor("ct", 0) : 0, stream ? stream->intFor("spf", 0) : 0,
+                   stream ? stream->intFor("sr", 44100) : 44100,
+                   static_cast<uint16_t>(stream ? stream->intFor("controlPort", 0) : 0));
+}
+
+void RaopRtspServer::configureAudio(uint64_t ct, uint64_t spf, uint64_t sr, uint16_t controlPort) {
     if (sr == 0 || sr > 192000) sr = 44100;
 
     AudioCodec codec;
@@ -938,7 +1024,7 @@ void RaopRtspServer::configureAudioStream(const BplistValue* stream) {
         audioSynced_ = false;
         audioSampleRate_ = static_cast<int>(sr);
         // The sender's RTCP port: retransmission requests go there (UxPlay needs it != 0 to resend).
-        audioRemoteControlPort_ = static_cast<uint16_t>(stream ? stream->intFor("controlPort", 0) : 0);
+        audioRemoteControlPort_ = controlPort;
         if (alacDecoder_) {
             alac_free(alacDecoder_);
             alacDecoder_ = nullptr;
@@ -984,6 +1070,161 @@ void RaopRtspServer::stopVideoStream() {
     if (onVideoStopped_) onVideoStopped_();
 }
 
+void RaopRtspServer::answerAppleChallenge(const RtspRequest& req, RtspResponse& resp, int clientFd) {
+    std::string challengeText = headerValue(req, "apple-challenge");
+    if (challengeText.empty()) return;
+    std::vector<uint8_t> challenge = base64Decode(challengeText);
+    if (challenge.empty() || challenge.size() > 16 || !onRsa_) {
+        LOGW("Cannot answer the Apple-Challenge (%zu bytes)", challenge.size());
+        return;
+    }
+    // shairport-sync apple_challenge: challenge + the receiver's IP on this connection + its MAC
+    // (the "XXXXXXXXXXXX@" prefix of the _raop name), zero-padded to 32 bytes, RSA-signed.
+    std::vector<uint8_t> buf = challenge;
+    sockaddr_storage local{};
+    socklen_t localLen = sizeof(local);
+    if (getsockname(clientFd, reinterpret_cast<sockaddr*>(&local), &localLen) == 0) {
+        if (local.ss_family == AF_INET) {
+            const auto* sa = reinterpret_cast<const sockaddr_in*>(&local);
+            const auto* ip = reinterpret_cast<const uint8_t*>(&sa->sin_addr.s_addr);
+            buf.insert(buf.end(), ip, ip + 4);
+        } else if (local.ss_family == AF_INET6) {
+            const auto* sa6 = reinterpret_cast<const sockaddr_in6*>(&local);
+            const uint8_t* ip = sa6->sin6_addr.s6_addr;
+            // An IPv4 client on a dual-stack socket knows the receiver by its IPv4 address.
+            if (IN6_IS_ADDR_V4MAPPED(&sa6->sin6_addr)) buf.insert(buf.end(), ip + 12, ip + 16);
+            else buf.insert(buf.end(), ip, ip + 16);
+        }
+    }
+    std::string mac;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        mac = macAddress_;
+    }
+    std::vector<uint8_t> macRaw = macBytes(mac);
+    // Only the classic-only _raop record gets RSA challenges; it advertises the MAC with the last
+    // bit flipped (DeviceIdentityHelper.getClassicRaopMacPrefix).
+    if (macRaw.size() == 6) macRaw[5] ^= 0x01;
+    buf.insert(buf.end(), macRaw.begin(), macRaw.end());
+    if (buf.size() < 32) buf.resize(32, 0);
+
+    std::vector<uint8_t> signature;
+    if (!onRsa_(0, buf, signature) || signature.empty()) {
+        LOGE("Signing the Apple-Challenge failed");
+        return;
+    }
+    resp.headers["Apple-Response"] = base64EncodeNoPadding(signature);
+    LOGI("Answered the classic AirPlay Apple-Challenge");
+}
+
+void RaopRtspServer::handleLegacyAnnounce(const RtspRequest& req, RtspResponse& resp, uint64_t connectionId) {
+    std::string sdp(req.body.begin(), req.body.end());
+    LegacyAnnounce announce;
+    announce.connectionId = connectionId;
+    announce.clientName = headerValue(req, "x-apple-client-name");
+    // The Music app sends no name; its User-Agent at least tells a Mac apart.
+    if (announce.clientName.empty() && headerValue(req, "user-agent").find("Macintosh") != std::string::npos) {
+        announce.clientName = "Mac";
+    }
+    std::string rtpmap, rsaKeyText, ivText;
+    std::istringstream lines(sdp);
+    std::string line;
+    while (std::getline(lines, line)) {
+        line = trim(line);
+        if (line.rfind("a=rtpmap:", 0) == 0) rtpmap = line.substr(9);
+        else if (line.rfind("a=rsaaeskey:", 0) == 0) rsaKeyText = line.substr(12);
+        else if (line.rfind("a=aesiv:", 0) == 0) ivText = line.substr(8);
+        else if (line.rfind("a=fmtp:", 0) == 0) {
+            // ALAC: "96 352 0 16 40 10 14 2 255 0 0 44100" (payload type, frames per packet, ..., rate).
+            std::istringstream fields(line.substr(7));
+            std::vector<long> values;
+            long v;
+            while (fields >> v) values.push_back(v);
+            if (values.size() >= 2 && values[1] > 0) announce.samplesPerFrame = static_cast<uint32_t>(values[1]);
+            if (values.size() >= 12 && values[11] > 0) announce.sampleRate = static_cast<uint32_t>(values[11]);
+        }
+    }
+    if (rtpmap.find("AppleLossless") == std::string::npos) {
+        // Only ALAC is wired up for classic senders (the Music app sends ALAC).
+        LOGW("Classic AirPlay ANNOUNCE with unsupported audio format '%s'", rtpmap.c_str());
+        resp.statusCode = 415;
+        resp.statusMessage = "Unsupported Media Type";
+        return;
+    }
+    if (!rsaKeyText.empty()) {
+        std::vector<uint8_t> aesKey;
+        if (!onRsa_ || !onRsa_(1, base64Decode(rsaKeyText), aesKey) || aesKey.size() != 16) {
+            LOGE("Could not unwrap the classic AirPlay audio key");
+            resp.statusCode = 400;
+            resp.statusMessage = "Bad Request";
+            return;
+        }
+        announce.aesKey = aesKey;
+        announce.aesIv = base64Decode(ivText);
+    }
+    LOGI("Classic AirPlay ANNOUNCE from '%s': ALAC %u frames/packet, %u Hz, %s",
+         announce.clientName.c_str(), announce.samplesPerFrame, announce.sampleRate,
+         announce.aesKey.empty() ? "unencrypted" : "RSA-encrypted");
+    std::lock_guard<std::mutex> lock(configMutex_);
+    legacyAnnounce_ = std::move(announce);
+}
+
+void RaopRtspServer::handleLegacySetup(const RtspRequest& req, RtspResponse& resp, const std::string& clientIp,
+                                       uint64_t connectionId, int clientFd) {
+    if (!pinAllows(connectionId)) {
+        LOGW("Classic SETUP from connection #%" PRIu64 " without pairing; PIN pairing required", connectionId);
+        resp.statusCode = 470;
+        resp.statusMessage = "Connection Authorization Required";
+        return;
+    }
+    LegacyAnnounce announce;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        announce = legacyAnnounce_;
+    }
+    if (announce.connectionId != connectionId) {
+        LOGW("Classic SETUP from connection #%" PRIu64 " without its ANNOUNCE", connectionId);
+        resp.statusCode = 400;
+        resp.statusMessage = "Bad Request";
+        return;
+    }
+    std::string transport = headerValue(req, "transport");
+    uint16_t remoteControlPort = transportPort(transport, "control_port=");
+    uint16_t remoteTimingPort = transportPort(transport, "timing_port=");
+
+    // A classic SETUP starts the whole session (like a session SETUP): the newest sender wins.
+    uint64_t owner = sessionConnection_.load();
+    if (owner != 0 && owner != connectionId) {
+        LOGI("Connection #%" PRIu64 " takes over the session from #%" PRIu64, connectionId, owner);
+        int previousFd = sessionConnectionFd_;
+        endSessionLocked("another sender took over");
+        if (previousFd >= 0) shutdown(previousFd, SHUT_RDWR);
+    }
+    sessionConnection_.store(connectionId);
+    sessionConnectionFd_ = clientFd;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        sessionClientIp_ = clientIp;
+        if (!announce.clientName.empty()) clientName_ = announce.clientName;
+    }
+    crypto_.setLegacyAudioKey(announce.aesKey, announce.aesIv);
+    classicSession_.store(true);
+    lastAudioPacketTicks_.store(std::chrono::steady_clock::now().time_since_epoch().count());
+    if (remoteTimingPort > 0) ntp_.start(clientIp, remoteTimingPort, kDefaultTimingPort);
+    configureAudio(2, announce.samplesPerFrame, announce.sampleRate, remoteControlPort);
+
+    int localTimingPort = ntp_.localPort() > 0 ? ntp_.localPort() : kDefaultTimingPort;
+    char transportOut[192];
+    std::snprintf(transportOut, sizeof(transportOut),
+                  "RTP/AVP/UDP;unicast;interleaved=0-1;mode=record;control_port=%d;timing_port=%d;server_port=%d",
+                  audioControlPort_, localTimingPort, audioDataPort_);
+    resp.headers["Transport"] = transportOut;
+    resp.headers["Session"] = "1";
+    resp.headers["Audio-Jack-Status"] = "connected; type=analog";
+    LOGI("Classic AirPlay SETUP: sender control %u / timing %u, receiver audio %d / control %d / timing %d",
+         remoteControlPort, remoteTimingPort, audioDataPort_, audioControlPort_, localTimingPort);
+}
+
 RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const std::string& clientIp, uint64_t connectionId,
                                                 int clientFd) {
     RtspResponse resp;
@@ -997,6 +1238,7 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
     resp.headers["CSeq"] = std::to_string(req.cseq);
 
     LOGI("RTSP Request: %s %s (CSeq: %d)", req.method.c_str(), req.uri.c_str(), req.cseq);
+    answerAppleChallenge(req, resp, clientFd);
 
     if (!isKnownMethod(req.method)) {
         // UxPlay: unknown RTSP methods get 501 (unknown HTTP/1.1 requests were answered 200 above).
@@ -1167,7 +1409,10 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
     } else if (req.method == "POST" && req.uri.find("/feedback") != std::string::npos) {
         resp.headers["Session"] = "1";
     } else if (req.method == "ANNOUNCE") {
+        handleLegacyAnnounce(req, resp, connectionId);
         resp.headers["Session"] = "1";
+    } else if (req.method == "SETUP" && !headerValue(req, "transport").empty()) {
+        handleLegacySetup(req, resp, clientIp, connectionId, clientFd);
     } else if (req.method == "SETUP") {
         BplistValue setup;
         bool parsed = parseBinaryPlist(req.body, setup) && setup.isDict();
@@ -1481,6 +1726,7 @@ void RaopRtspServer::handleAudioDataPacket(uint8_t* packet, size_t length) {
                   (payloadSize == 4 && (std::memcmp(payload, kSilencePacket, 4) == 0 ||
                                         std::memcmp(payload, kNoDataMarker, 4) == 0));
 
+    lastAudioPacketTicks_.store(std::chrono::steady_clock::now().time_since_epoch().count());
     std::lock_guard<std::mutex> lock(audioMutex_);
     if (audioCodec_ == AudioCodec::STOPPED) return;
     if (audioCodec_ == AudioCodec::ALAC && length == kAlacFillerPacketBytes) filler = true;
