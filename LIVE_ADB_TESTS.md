@@ -409,9 +409,10 @@ Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 H
 | 7a Safari / URL video | ✅ / ⚠️ | Remote play/pause (`KEYCODE_MEDIA_PLAY_PAUSE`, scan 164) and OK reach the player and are reported to the iPhone; iPhone pause/play is followed. Started from Safari, the iPhone keeps a screen mirroring session open and several times ended the cast itself after 6–24 s (`/rate 0` + `/stop`, then mirroring again) while the TV was playing normally |
 | 7b YouTube | ✅ | |
 | 8 PIN pairing | ✅ | Pairing after removing the device; with the permission the PIN screen opens over YouTube |
+| 9 Audio/video sync (On) | ✅ | Mac mirroring: lip sync good by ear; HW decoder, avg 45 fps, no drops; old direct-AudioTrack path: 0 underruns, buffer at 600–680 of 700 ms (≈0.6 s latency), small overflow drops (13 KB at the start, then 1–3 KB now and then). If it crackles, the 700 ms track is the first thing to raise |
 | 10 Background launch fallback | ✅ (fixed) | Without the permission Android aborts the start (`Abort background activity starts`) and the fallback notification is posted but **never shown**: Android TV only lists it in the notification panel. Added: a toast over the app in use (the PIN code for ~10 s, or "… is mirroring; … open AynaCast TV") and a permission dialog when the app is opened without it |
 
-Not run on this TV: 2, 5, 7c, 9, 11, 12.
+Not run on this TV: 2, 5, 7c, 11, 12. Mac Music app: not supported (see below).
 
 **Discovery:** the TV once stopped receiving any multicast/broadcast on Wi-Fi (iPhone could not see it,
 the Mac only from its cache; not even Chromecast answered queries). Turning the TV's Wi-Fi off and on
