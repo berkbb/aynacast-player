@@ -162,7 +162,7 @@ Run all tests via:
 > - **AirPlay, Apple TV, iPhone, iPad, Mac, and macOS** are registered trademarks of **Apple Inc.**, registered in the U.S. and other countries and regions.
 > - This software is an **independent, open-source clean-room implementation** developed solely for device interoperability, personal research, and education.
 > - This project is **NOT affiliated with, sponsored by, authorized by, or endorsed by Apple Inc.**
-> - **FairPlay & DRM Notice:** This software **does NOT decrypt, bypass, or circumvent any Digital Rights Management (DRM) or FairPlay-protected streams** (such as encrypted media from Apple TV+, Netflix, etc.). It functions exclusively by receiving unencrypted local network screen mirroring and audio frames over standard network protocols (RTSP, RTP, H.264, PCM) for cross-platform hardware interoperability.
+> - **FairPlay & DRM Notice:** This software **does NOT decrypt, bypass, or circumvent any Digital Rights Management (DRM) or FairPlay-protected streams** (such as encrypted media from Apple TV+, Netflix, etc.). It only receives the local network screen mirroring and audio streams a sender addresses to it (RTSP, RTP, H.264, AAC/ALAC); their transport encryption between the sender and this receiver is not DRM and protects no third-party content.
 
 ---
 

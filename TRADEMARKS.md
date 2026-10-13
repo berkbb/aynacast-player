@@ -16,6 +16,8 @@ This project is **NOT** developed, authorized, certified, sponsored,
 or endorsed by Apple Inc.
 
 This software does not bypass, crack, or decrypt any Digital Rights
-Management (DRM) or FairPlay-protected content. It operates exclusively
-by receiving standard unencrypted local network media streams for
-cross-device compatibility.
+Management (DRM) or FairPlay-protected content: protected videos from
+services such as Apple TV+ or Netflix are refused. It only receives the
+local network screen mirroring and audio streams a sender addresses to
+it; their transport encryption between the sender and this receiver
+(AirPlay session keys) is not DRM and protects no third-party content.
