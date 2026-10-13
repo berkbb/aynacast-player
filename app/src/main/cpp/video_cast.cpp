@@ -619,6 +619,7 @@ void VideoCastHandler::sendStoppedEventLocked() {
 }
 
 void VideoCastHandler::sendStateEventLocked(const char* state) {
+    LOGI("Telling the sender playback is %s%s", state, reverseFd_ < 0 ? " (no event connection)" : "");
     sendEventLocked(std::string(kPlistHeader) +
                     "<dict>\n  <key>category</key><string>video</string>\n"
                     "  <key>sessionID</key><integer>1</integer>\n"

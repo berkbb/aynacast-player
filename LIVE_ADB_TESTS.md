@@ -388,14 +388,22 @@ crashes) during 30 min of mirroring + 30 min of music with the loop in Test 12.
 
 ## Partial run: 13 October 2026
 
-Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 Hz) · MacBook Air
+Arçelik Android TV (MStar M7322, 4 cores, Android 11, armeabi-v7a, 1080p @ 60 Hz) · MacBook Air · iPhone
 
 | Test | Result | Notes |
 |------|--------|-------|
 | 1 Installation and service | ✅ | Release APK (armeabi-v7a) |
 | 4 Mac mirroring | ✅ | Fixed: `OMX.MS.AVC.Decoder` rejects `KEY_LOW_LATENCY`, Android 11 then fails `configure()` and the software decoder (~40 fps, 467 dropped frames per minute) lagged visibly. Now hardware, 42–60 fps at 2–3 Mbps, no drops. Fixed: constant audio crackle (jitter buffer, see the audio issue above) |
+| 6 Music + Now Playing | ✅ | Apple Music (ALAC) through the jitter buffer, see 4f below |
+| 7a Safari / URL video | ✅ / ⚠️ | Remote play/pause (`KEYCODE_MEDIA_PLAY_PAUSE`, scan 164) and OK reach the player and are reported to the iPhone; iPhone pause/play is followed. Started from Safari, the iPhone keeps a screen mirroring session open and several times ended the cast itself after 6–24 s (`/rate 0` + `/stop`, then mirroring again) while the TV was playing normally |
+| 7b YouTube | ✅ | |
 
-The other tests were not run on this TV.
+Not run on this TV: 2, 3, 5, 7c, 8–12.
+
+**Discovery:** the TV once stopped receiving any multicast/broadcast on Wi-Fi (iPhone could not see it,
+the Mac only from its cache; not even Chromecast answered queries). Turning the TV's Wi-Fi off and on
+fixed it; afterwards only part of the queries were answered. A TV / router issue, not the app; if the
+TV disappears from the iPhone, check with `dns-sd -B _airplay._tcp` and reconnect the TV's Wi-Fi.
 
 ### Changes made on Android 11 – compare on Android 8
 

@@ -222,6 +222,7 @@ class VideoCastActivity : ComponentActivity() {
         if (controls.rateId != appliedRateId) {
             appliedRateId = controls.rateId
             val rate = controls.rate
+            Log.i(TAG, "Sender sets rate $rate (playing=${exoPlayer.isPlaying})")
             if (rate <= 0f) {
                 exoPlayer.pause()
             } else {
@@ -284,6 +285,14 @@ class VideoCastActivity : ComponentActivity() {
             endGraceJob?.cancel()
             endGraceJob = null
         }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // TV remotes differ in what their play/pause buttons send; the log shows what arrives here.
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            Log.i(TAG, "Remote key ${KeyEvent.keyCodeToString(event.keyCode)} (scan code ${event.scanCode})")
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
