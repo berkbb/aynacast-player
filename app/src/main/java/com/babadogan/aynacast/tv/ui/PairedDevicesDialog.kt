@@ -69,8 +69,12 @@ fun PairedDevicesDialog(
                 fontSize = 14.sp
             )
             Spacer(Modifier.padding(top = 20.dp))
+            // The list yields height to the header and buttons; a TV screen is only ~540dp tall,
+            // so a fixed 360dp list pushed the action row off the bottom and clipped its labels.
             LazyColumn(
-                modifier = Modifier.heightIn(max = 360.dp),
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .heightIn(max = 360.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(devices, key = { it.key.contentHashCode() }) { device ->
