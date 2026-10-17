@@ -42,11 +42,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -57,8 +54,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import com.babadogan.aynacast.tv.R
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -114,6 +109,8 @@ class AirPlaySettingsActivity : ComponentActivity() {
             val isAudioActive by AirPlaySessionManager.isAudioActive.collectAsState()
             val castMedia by VideoCastSession.media.collectAsState()
             var showPairedDevices by remember { mutableStateOf(false) }
+            var showSettings by rememberSaveable { mutableStateOf(false) }
+            var showAbout by rememberSaveable { mutableStateOf(false) }
             val canDrawOverlays by overlayPermissionGranted.collectAsState()
             val overlayUnavailable by overlaySettingsUnavailable.collectAsState()
             // Asked once each time the app is opened while the permission is missing.
@@ -143,40 +140,66 @@ class AirPlaySettingsActivity : ComponentActivity() {
                         isVideoActive = isVideoActive,
                         deviceName = deviceName,
                         clientName = metadata.deviceName,
-                        appVersion = appVersion,
                         currentLanguage = appSettings.language,
-                        currentTheme = appSettings.themeMode,
-                        keepAliveInBackground = appSettings.keepAliveInBackground,
-                        discoveryRefresh = appSettings.discoveryRefresh,
-                        onDiscoveryRefreshChanged = { settingsRepo.setDiscoveryRefresh(it) },
-                        avSyncEnabled = appSettings.avSyncEnabled,
-                        pinRequired = appSettings.pinRequired,
-                        pairedDeviceCount = pairedDevices.size,
                         showOverlayPermission = !canDrawOverlays,
                         overlaySettingsUnavailable = overlayUnavailable,
-                        onLanguageChanged = { settingsRepo.setLanguage(it) },
-                        onThemeChanged = { settingsRepo.setThemeMode(it) },
-                        onAvSyncChanged = { settingsRepo.setAvSyncEnabled(it) },
-                        onPinRequiredChanged = { settingsRepo.setPinRequired(it) },
-                        onManagePairedDevices = { showPairedDevices = true },
-                        onKeepAliveChanged = { enabled ->
-                            settingsRepo.setKeepAliveInBackground(enabled)
-                            if (enabled && settingsRepo.settings.value.receiverEnabled) {
-                                ContextCompat.startForegroundService(this@AirPlaySettingsActivity, serviceIntent)
-                            }
-                        },
-                        onRestartService = {
-                            stopService(serviceIntent)
-                            if (settingsRepo.settings.value.receiverEnabled) {
-                                ContextCompat.startForegroundService(this@AirPlaySettingsActivity, serviceIntent)
-                            }
-                        },
                         onShowMirroring = { startActivity(AirPlayPlayerActivity.createIntent(this@AirPlaySettingsActivity)) },
                         onGrantOverlayPermission = {
                             overlaySettingsUnavailable.value = !openOverlayPermissionSettings()
-                        }
+                        },
+                        onOpenSettings = { showSettings = true },
+                        onOpenAbout = { showAbout = true }
                     )
-                    if (!canDrawOverlays && !overlayPromptDone && !showPairedDevices) {
+                    if (showSettings) {
+                        TvFullScreenWindow(
+                            title = AirPlayStrings.tabSettings(appSettings.language),
+                            language = appSettings.language,
+                            onDismiss = { showSettings = false }
+                        ) {
+                            SettingsContent(
+                                modifier = Modifier.weight(1f),
+                                currentLanguage = appSettings.language,
+                                currentTheme = appSettings.themeMode,
+                                keepAliveInBackground = appSettings.keepAliveInBackground,
+                                discoveryRefresh = appSettings.discoveryRefresh,
+                                onDiscoveryRefreshChanged = { settingsRepo.setDiscoveryRefresh(it) },
+                                avSyncEnabled = appSettings.avSyncEnabled,
+                                pinRequired = appSettings.pinRequired,
+                                pairedDeviceCount = pairedDevices.size,
+                                onLanguageChanged = { settingsRepo.setLanguage(it) },
+                                onThemeChanged = { settingsRepo.setThemeMode(it) },
+                                onAvSyncChanged = { settingsRepo.setAvSyncEnabled(it) },
+                                onPinRequiredChanged = { settingsRepo.setPinRequired(it) },
+                                onManagePairedDevices = { showPairedDevices = true },
+                                onKeepAliveChanged = { enabled ->
+                                    settingsRepo.setKeepAliveInBackground(enabled)
+                                    if (enabled && settingsRepo.settings.value.receiverEnabled) {
+                                        ContextCompat.startForegroundService(this@AirPlaySettingsActivity, serviceIntent)
+                                    }
+                                },
+                                onRestartService = {
+                                    stopService(serviceIntent)
+                                    if (settingsRepo.settings.value.receiverEnabled) {
+                                        ContextCompat.startForegroundService(this@AirPlaySettingsActivity, serviceIntent)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    if (showAbout) {
+                        TvFullScreenWindow(
+                            title = AirPlayStrings.tabAbout(appSettings.language),
+                            language = appSettings.language,
+                            onDismiss = { showAbout = false }
+                        ) {
+                            AboutContent(
+                                modifier = Modifier.weight(1f),
+                                currentLanguage = appSettings.language,
+                                appVersion = appVersion
+                            )
+                        }
+                    }
+                    if (!canDrawOverlays && !overlayPromptDone && !showPairedDevices && !showSettings && !showAbout) {
                         OverlayPermissionDialog(
                             language = appSettings.language,
                             onGrant = {
@@ -266,31 +289,14 @@ fun AirPlaySettingsMainScreen(
     isVideoActive: Boolean,
     deviceName: String,
     clientName: String,
-    appVersion: String,
     currentLanguage: AppLanguage,
-    currentTheme: AppThemeMode,
-    keepAliveInBackground: Boolean,
-    discoveryRefresh: Boolean,
-    onDiscoveryRefreshChanged: (Boolean) -> Unit,
-    avSyncEnabled: Boolean,
-    pinRequired: Boolean,
-    pairedDeviceCount: Int,
     showOverlayPermission: Boolean,
     overlaySettingsUnavailable: Boolean,
-    onLanguageChanged: (AppLanguage) -> Unit,
-    onThemeChanged: (AppThemeMode) -> Unit,
-    onAvSyncChanged: (Boolean) -> Unit,
-    onPinRequiredChanged: (Boolean) -> Unit,
-    onManagePairedDevices: () -> Unit,
-    onKeepAliveChanged: (Boolean) -> Unit,
-    onRestartService: () -> Unit,
     onShowMirroring: () -> Unit,
-    onGrantOverlayPermission: () -> Unit
+    onGrantOverlayPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenAbout: () -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Settings, 1: About
-    // Incremented by the Settings tab: the settings sit below the status cards, so the tab scrolls to them.
-    var settingsRequests by remember { mutableIntStateOf(0) }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -300,7 +306,7 @@ fun AirPlaySettingsMainScreen(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            // Header with Navigation Tabs
+            // Header; Settings and About open in their own windows
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -335,78 +341,52 @@ fun AirPlaySettingsMainScreen(
 
                 Spacer(modifier = Modifier.width(16.dp))
 
-                // TV Navigation Tabs (Settings / About)
+                // Settings / About windows
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TvNavButton(
                         text = AirPlayStrings.tabSettings(currentLanguage),
-                        isSelected = selectedTab == 0,
-                        onClick = {
-                            selectedTab = 0
-                            settingsRequests++
-                        }
+                        isSelected = false,
+                        onClick = onOpenSettings
                     )
                     TvNavButton(
                         text = AirPlayStrings.tabAbout(currentLanguage),
-                        isSelected = selectedTab == 1,
-                        onClick = { selectedTab = 1 }
+                        isSelected = false,
+                        onClick = onOpenAbout
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Body Content based on Tab
-            if (selectedTab == 0) {
-                SettingsTabContent(
-                    settingsRequests = settingsRequests,
-                    nowPlaying = nowPlaying,
-                    onShowNowPlaying = onShowNowPlaying,
-                    receiverEnabled = receiverEnabled,
-                    isAudioActive = isAudioActive,
-                    hasActiveStream = hasActiveStream,
-                    onStopStreaming = onStopStreaming,
-                    onReceiverEnabledChanged = onReceiverEnabledChanged,
-                    status = status,
-                    isServiceRunning = isServiceRunning,
-                    isVideoActive = isVideoActive,
-                    deviceName = deviceName,
-                    clientName = clientName,
-                    currentLanguage = currentLanguage,
-                    currentTheme = currentTheme,
-                    keepAliveInBackground = keepAliveInBackground,
-                    discoveryRefresh = discoveryRefresh,
-                    onDiscoveryRefreshChanged = onDiscoveryRefreshChanged,
-                    avSyncEnabled = avSyncEnabled,
-                    pinRequired = pinRequired,
-                    pairedDeviceCount = pairedDeviceCount,
-                    showOverlayPermission = showOverlayPermission,
-                    overlaySettingsUnavailable = overlaySettingsUnavailable,
-                    onLanguageChanged = onLanguageChanged,
-                    onThemeChanged = onThemeChanged,
-                    onAvSyncChanged = onAvSyncChanged,
-                    onPinRequiredChanged = onPinRequiredChanged,
-                    onManagePairedDevices = onManagePairedDevices,
-                    onKeepAliveChanged = onKeepAliveChanged,
-                    onRestartService = onRestartService,
-                    onShowMirroring = onShowMirroring,
-                    onGrantOverlayPermission = onGrantOverlayPermission
-                )
-            } else {
-                AboutTabContent(
-                    currentLanguage = currentLanguage,
-                    appVersion = appVersion
-                )
-            }
+            HomeContent(
+                nowPlaying = nowPlaying,
+                onShowNowPlaying = onShowNowPlaying,
+                receiverEnabled = receiverEnabled,
+                isAudioActive = isAudioActive,
+                hasActiveStream = hasActiveStream,
+                onStopStreaming = onStopStreaming,
+                onReceiverEnabledChanged = onReceiverEnabledChanged,
+                status = status,
+                isServiceRunning = isServiceRunning,
+                isVideoActive = isVideoActive,
+                deviceName = deviceName,
+                clientName = clientName,
+                currentLanguage = currentLanguage,
+                showOverlayPermission = showOverlayPermission,
+                overlaySettingsUnavailable = overlaySettingsUnavailable,
+                onShowMirroring = onShowMirroring,
+                onGrantOverlayPermission = onGrantOverlayPermission
+            )
         }
     }
 }
 
+/** Status, how-to and permission cards; the configuration lives in [SettingsContent]. */
 @Composable
-fun SettingsTabContent(
-    settingsRequests: Int,
+fun HomeContent(
     nowPlaying: NowPlaying?,
     onShowNowPlaying: () -> Unit,
     receiverEnabled: Boolean,
@@ -420,35 +400,15 @@ fun SettingsTabContent(
     deviceName: String,
     clientName: String,
     currentLanguage: AppLanguage,
-    currentTheme: AppThemeMode,
-    keepAliveInBackground: Boolean,
-    discoveryRefresh: Boolean,
-    onDiscoveryRefreshChanged: (Boolean) -> Unit,
-    avSyncEnabled: Boolean,
-    pinRequired: Boolean,
-    pairedDeviceCount: Int,
     showOverlayPermission: Boolean,
     overlaySettingsUnavailable: Boolean,
-    onLanguageChanged: (AppLanguage) -> Unit,
-    onThemeChanged: (AppThemeMode) -> Unit,
-    onAvSyncChanged: (Boolean) -> Unit,
-    onPinRequiredChanged: (Boolean) -> Unit,
-    onManagePairedDevices: () -> Unit,
-    onKeepAliveChanged: (Boolean) -> Unit,
-    onRestartService: () -> Unit,
     onShowMirroring: () -> Unit,
     onGrantOverlayPermission: () -> Unit
 ) {
-    val scrollState = rememberScrollState()
-    var settingsTop by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(settingsRequests) {
-        if (settingsRequests > 0) scrollState.animateScrollTo(settingsTop.toInt())
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scrollState),
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         // Status & How-To Cards Row
@@ -587,12 +547,37 @@ fun SettingsTabContent(
                 )
             }
         }
+    }
+}
 
+@Composable
+fun SettingsContent(
+    modifier: Modifier = Modifier,
+    currentLanguage: AppLanguage,
+    currentTheme: AppThemeMode,
+    keepAliveInBackground: Boolean,
+    discoveryRefresh: Boolean,
+    onDiscoveryRefreshChanged: (Boolean) -> Unit,
+    avSyncEnabled: Boolean,
+    pinRequired: Boolean,
+    pairedDeviceCount: Int,
+    onLanguageChanged: (AppLanguage) -> Unit,
+    onThemeChanged: (AppThemeMode) -> Unit,
+    onAvSyncChanged: (Boolean) -> Unit,
+    onPinRequiredChanged: (Boolean) -> Unit,
+    onManagePairedDevices: () -> Unit,
+    onKeepAliveChanged: (Boolean) -> Unit,
+    onRestartService: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
         // Appearance & Language Configuration Row
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { settingsTop = it.positionInParent().y },
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // Theme Mode Card
@@ -850,7 +835,8 @@ fun SettingsTabContent(
 }
 
 @Composable
-fun AboutTabContent(
+fun AboutContent(
+    modifier: Modifier = Modifier,
     currentLanguage: AppLanguage,
     appVersion: String
 ) {
@@ -858,8 +844,8 @@ fun AboutTabContent(
     val coroutineScope = rememberCoroutineScope()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
+            .fillMaxWidth()
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
