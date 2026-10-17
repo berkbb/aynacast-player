@@ -134,7 +134,7 @@ private fun PairedDeviceCard(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                painter = painterResource(deviceIconFor(device.model, device.name)),
+                painter = painterResource(deviceIconFor(device)),
                 contentDescription = null,
                 tint = AppleAccentBlue,
                 modifier = Modifier.size(38.dp)
@@ -168,12 +168,14 @@ private fun PairedDeviceCard(
 }
 
 /**
- * The hardware model the device reported (e.g. "iPhone15,2", "MacBookPro18,3") decides the icon.
- * Records without one (classic AirPlay senders, devices not seen since pairing) fall back to the name.
+ * Classic AirPlay senders are the Mac Music app, shown with a music note. Otherwise the hardware
+ * model the device reported (e.g. "iPhone15,2") decides the icon; records without one fall back to the name.
  */
 @DrawableRes
-private fun deviceIconFor(model: String?, name: String?): Int =
-    model?.let(::iconForText) ?: name?.let(::iconForText) ?: R.drawable.ic_device_generic
+private fun deviceIconFor(device: PinPairingManager.PairedDevice): Int = when {
+    device.isClassicSender -> R.drawable.ic_device_music
+    else -> device.model?.let(::iconForText) ?: device.name?.let(::iconForText) ?: R.drawable.ic_device_generic
+}
 
 @DrawableRes
 private fun iconForText(text: String): Int? {

@@ -67,7 +67,10 @@ object PinPairingManager {
     val pairedDevices: StateFlow<List<ByteArray>> = _pairedDevices.asStateFlow()
 
     /** A paired device as listed in the settings. [name] is null for devices paired before names were kept. */
-    class PairedDevice(val key: ByteArray, val name: String?, val pairedAtMs: Long, val model: String? = null)
+    class PairedDevice(val key: ByteArray, val name: String?, val pairedAtMs: Long, val model: String? = null) {
+        /** Entered the code through classic AirPlay, which only the Mac Music app uses. */
+        val isClassicSender: Boolean get() = key.decodeToString().startsWith(CLASSIC_KEY_PREFIX)
+    }
 
     private val _pairedDeviceDetails = MutableStateFlow<List<PairedDevice>>(emptyList())
     val pairedDeviceDetails: StateFlow<List<PairedDevice>> = _pairedDeviceDetails.asStateFlow()
