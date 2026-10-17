@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **License: MIT → GNU GPL-3.0.** The app bundles the GPL-3.0 `playfair` FairPlay code (as UxPlay and RPiPlay do), so the project as a whole must be GPL-3.0; its license file and origin are now included (`app/src/main/cpp/playfair/`), and `THIRD_PARTY_NOTICES.md` lists all third-party code. The About screen says GPL-3.0 in every language.
 - **Simpler home screen:** it now shows only the receiver status, how-to and permission cards. **Settings** and **About** open in their own full-screen windows with a close button in the top-right corner; the remote's Back button closes whichever window is open.
-- **Paired devices:** the manager opens full screen and shows each device as a card with an icon (iPhone, iPad, Mac or generic), its name and pairing date; long lists scroll and the buttons are no longer clipped. The icon follows the hardware model the device reports when it connects (e.g. `iPhone15,2`), so a renamed device still gets the right one; devices paired earlier pick up their model on their next connection, and classic AirPlay senders (Mac Music) still fall back to the name.
+- **Paired devices:** the manager opens full screen and shows each device as a card with an icon (iPhone, iPad, Mac, music note or generic), its name and pairing date; long lists scroll and the buttons are no longer clipped. The icon follows the hardware model the device reports when it connects (e.g. `iPhone15,2`), so a renamed device still gets the right one; devices paired earlier pick up their model on their next connection, and the Mac Music app (classic AirPlay) is shown with a music note.
 
 ## [1.3.0] - 2026-10-13
 
