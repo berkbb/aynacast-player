@@ -26,8 +26,8 @@
     <string name="about_architecture_desc">Arka Plan Daemon Servisi (Foreground Daemon) + İhtiyaç Anında Açılan Compose TV Arayüzü (On-Demand UI).</string>
     <string name="about_protocols_title">Desteklenen Protokoller ve Motorlar</string>
     <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Donanım Çözücü, AAC-ELD / ALAC Ses, AudioTrack.</string>
-    <string name="about_developer_title">Geliştirici ve Telif</string>
-    <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara Üniversitesi Teknokent</string>
+    <string name="about_developer_title">Yayıncı</string>
+    <string name="about_developer_desc">BABADOGAN TECH AND EDU</string>
     <string name="about_license_title">Lisans</string>
     <string name="about_license_desc">GNU Genel Kamu Lisansı v3.0 (GPL-3.0) ile lisanslanmıştır.</string>
     <string name="about_disclaimer_title">Yasal Uyarı ve Marka Bildirimi</string>

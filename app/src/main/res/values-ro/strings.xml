@@ -26,8 +26,8 @@
     <string name="about_architecture_desc">Serviciu daemon în prim-plan + interfață Jetpack Compose for TV deschisă la cerere.</string>
     <string name="about_protocols_title">Protocoale și motoare acceptate</string>
     <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), decodor hardware MediaCodec AVC H.264, audio AAC-ELD / ALAC, AudioTrack.</string>
-    <string name="about_developer_title">Dezvoltator și drepturi de autor</string>
-    <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara University Technopolis</string>
+    <string name="about_developer_title">Editor</string>
+    <string name="about_developer_desc">BABADOGAN TECH AND EDU</string>
     <string name="about_license_title">Licență</string>
     <string name="about_license_desc">Licențiat sub GNU General Public License v3.0 (GPL-3.0).</string>
     <string name="about_disclaimer_title">Declinarea răspunderii și mărci comerciale</string>

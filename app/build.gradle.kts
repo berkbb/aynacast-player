@@ -20,8 +20,8 @@ android {
         applicationId = "com.babadogan.aynacast.tv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "1.5.1"
 
         ndk {
             abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))

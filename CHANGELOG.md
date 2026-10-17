@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.1] - 2026-10-17
+
+### Changed
+- **Settings and About:** a Close button at the bottom of the window as well as the one in the top-right corner, as in Pitwall Updater. In Settings, Restart Service moved down next to it, so both stay on screen while the page scrolls.
+- **Home screen:** fits on one screen, so moving to the lower cards no longer scrolls the info cards out of view; the How to Connect card is text only and the remote skips it.
+
+## [1.5.0] - 2026-10-17
+
+### Changed
+- **Refreshed look, matching Pitwall Updater:** darker background and cards, an accent bar before the screen and window titles, small grey captions on the cards, and buttons that fill light with dark text when focused. The home screen opens with info cards for the AirPlay name, version and status.
+- **Publisher:** About now shows "BABADOGAN TECH AND EDU" under Publisher; the Ankara University Teknokent line is gone.
+
+### Fixed
+- **Paired devices:** a focused device card (which grows slightly) is no longer cut off under the title bar when the remote scrolls to a lower row.
+
 ## [1.4.0] - 2026-10-17
 
 ### Documentation

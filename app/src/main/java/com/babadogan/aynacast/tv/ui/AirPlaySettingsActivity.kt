@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,6 +57,10 @@ import androidx.compose.ui.res.painterResource
 import com.babadogan.aynacast.tv.R
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -73,6 +79,8 @@ import com.babadogan.aynacast.tv.ui.theme.AirPlayTvTheme
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentBlue
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentGreen
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentOrange
+import com.babadogan.aynacast.tv.ui.theme.AppleDarkBackground
+import com.babadogan.aynacast.tv.ui.theme.FocusFill
 import com.babadogan.aynacast.tv.util.DeviceIdentityHelper
 import com.babadogan.aynacast.tv.util.requestNotificationPermissionOnce
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -140,6 +148,7 @@ class AirPlaySettingsActivity : ComponentActivity() {
                         isVideoActive = isVideoActive,
                         deviceName = deviceName,
                         clientName = metadata.deviceName,
+                        appVersion = appVersion,
                         currentLanguage = appSettings.language,
                         showOverlayPermission = !canDrawOverlays,
                         overlaySettingsUnavailable = overlayUnavailable,
@@ -154,6 +163,19 @@ class AirPlaySettingsActivity : ComponentActivity() {
                         TvFullScreenWindow(
                             title = AirPlayStrings.tabSettings(appSettings.language),
                             language = appSettings.language,
+                            bottomClose = true,
+                            bottomActions = {
+                                TvNavButton(
+                                    text = AirPlayStrings.restartService(appSettings.language),
+                                    isSelected = false,
+                                    onClick = {
+                                        stopService(serviceIntent)
+                                        if (settingsRepo.settings.value.receiverEnabled) {
+                                            ContextCompat.startForegroundService(this@AirPlaySettingsActivity, serviceIntent)
+                                        }
+                                    }
+                                )
+                            },
                             onDismiss = { showSettings = false }
                         ) {
                             SettingsContent(
@@ -176,12 +198,6 @@ class AirPlaySettingsActivity : ComponentActivity() {
                                     if (enabled && settingsRepo.settings.value.receiverEnabled) {
                                         ContextCompat.startForegroundService(this@AirPlaySettingsActivity, serviceIntent)
                                     }
-                                },
-                                onRestartService = {
-                                    stopService(serviceIntent)
-                                    if (settingsRepo.settings.value.receiverEnabled) {
-                                        ContextCompat.startForegroundService(this@AirPlaySettingsActivity, serviceIntent)
-                                    }
                                 }
                             )
                         }
@@ -190,6 +206,7 @@ class AirPlaySettingsActivity : ComponentActivity() {
                         TvFullScreenWindow(
                             title = AirPlayStrings.tabAbout(appSettings.language),
                             language = appSettings.language,
+                            bottomClose = true,
                             onDismiss = { showAbout = false }
                         ) {
                             AboutContent(
@@ -289,6 +306,7 @@ fun AirPlaySettingsMainScreen(
     isVideoActive: Boolean,
     deviceName: String,
     clientName: String,
+    appVersion: String,
     currentLanguage: AppLanguage,
     showOverlayPermission: Boolean,
     overlaySettingsUnavailable: Boolean,
@@ -316,24 +334,25 @@ fun AirPlaySettingsMainScreen(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_airplay_logo),
-                        contentDescription = "AirPlay TV Logo",
-                        modifier = Modifier.size(52.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        Text(
-                            text = AirPlayStrings.appName(currentLanguage),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontSize = 30.sp,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AccentBar()
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = AirPlayStrings.appName(currentLanguage),
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = AirPlayStrings.appSubtitle(currentLanguage),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 14.sp,
+                            fontSize = 16.sp,
                             maxLines = 2
                         )
                     }
@@ -343,7 +362,7 @@ fun AirPlaySettingsMainScreen(
 
                 // Settings / About windows
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TvNavButton(
@@ -359,7 +378,7 @@ fun AirPlaySettingsMainScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             HomeContent(
                 nowPlaying = nowPlaying,
@@ -374,6 +393,7 @@ fun AirPlaySettingsMainScreen(
                 isVideoActive = isVideoActive,
                 deviceName = deviceName,
                 clientName = clientName,
+                appVersion = appVersion,
                 currentLanguage = currentLanguage,
                 showOverlayPermission = showOverlayPermission,
                 overlaySettingsUnavailable = overlaySettingsUnavailable,
@@ -399,6 +419,7 @@ fun HomeContent(
     isVideoActive: Boolean,
     deviceName: String,
     clientName: String,
+    appVersion: String,
     currentLanguage: AppLanguage,
     showOverlayPermission: Boolean,
     overlaySettingsUnavailable: Boolean,
@@ -411,33 +432,48 @@ fun HomeContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Status & How-To Cards Row
+        // Info cards, as on the Pitwall Updater home screen
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Status Card
+            InfoCard(
+                title = AirPlayStrings.cardReceiverName(currentLanguage),
+                value = deviceName,
+                modifier = Modifier.weight(1f)
+            )
+            InfoCard(
+                title = AirPlayStrings.cardVersion(currentLanguage),
+                value = "v$appVersion",
+                modifier = Modifier.weight(1f)
+            )
+            val statusColor = when {
+                !receiverEnabled -> AppleAccentOrange
+                isServiceRunning -> AppleAccentGreen
+                else -> AppleAccentOrange
+            }
+            InfoCard(
+                title = AirPlayStrings.cardStatus(currentLanguage),
+                value = when {
+                    !receiverEnabled -> AirPlayStrings.receiverOffStatus(currentLanguage)
+                    isServiceRunning -> AirPlayStrings.serviceStatusActive(currentLanguage)
+                    else -> AirPlayStrings.serviceStatusStopped(currentLanguage)
+                },
+                valueColor = statusColor,
+                dotColor = statusColor,
+                modifier = Modifier.weight(1.2f)
+            )
+        }
+
+        // Connection & How-To Cards Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // Connection Card
             // Holds the AirPlay on/off button, so the card itself must not take focus.
             TvCard(modifier = Modifier.weight(1f), focusable = false) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(12.dp)
-                            .background(if (isServiceRunning) AppleAccentGreen else AppleAccentOrange, CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = when {
-                            !receiverEnabled -> AirPlayStrings.receiverOffStatus(currentLanguage)
-                            isServiceRunning -> AirPlayStrings.serviceStatusActive(currentLanguage)
-                            else -> AirPlayStrings.serviceStatusStopped(currentLanguage)
-                        },
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 18.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
+                CardLabel(AirPlayStrings.cardConnection(currentLanguage))
                 Text(
                     text = when {
                         !receiverEnabled -> AirPlayStrings.receiverOffDesc(currentLanguage)
@@ -452,7 +488,7 @@ fun HomeContent(
                         }
                         else -> AirPlayStrings.statusDisconnected(currentLanguage)
                     },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -489,7 +525,7 @@ fun HomeContent(
                         color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 15.sp,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                     TvChoiceChip(
                         text = AirPlayStrings.showNowPlaying(currentLanguage),
@@ -499,20 +535,15 @@ fun HomeContent(
                 }
             }
 
-            // Instructions Card
-            TvCard(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = AirPlayStrings.howToConnectTitle(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 18.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                )
+            // Instructions Card: text only, so the D-pad skips it
+            TvCard(modifier = Modifier.weight(1f), focusable = false) {
+                CardLabel(AirPlayStrings.howToConnectTitle(currentLanguage))
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = AirPlayStrings.howToConnectInstructions(deviceName, currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
-                    lineHeight = 22.sp
+                    lineHeight = 20.sp
                 )
             }
         }
@@ -524,19 +555,14 @@ fun HomeContent(
                 borderColor = AppleAccentOrange.copy(alpha = 0.6f),
                 focusable = false
             ) {
-                Text(
-                    text = AirPlayStrings.overlayPermissionTitle(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 18.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                )
+                CardLabel(AirPlayStrings.overlayPermissionTitle(currentLanguage))
                 Text(
                     text = if (overlaySettingsUnavailable) {
                         AirPlayStrings.overlayPermissionUnavailable(currentLanguage)
                     } else {
                         AirPlayStrings.overlayPermissionDesc(currentLanguage)
                     },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -566,8 +592,7 @@ fun SettingsContent(
     onAvSyncChanged: (Boolean) -> Unit,
     onPinRequiredChanged: (Boolean) -> Unit,
     onManagePairedDevices: () -> Unit,
-    onKeepAliveChanged: (Boolean) -> Unit,
-    onRestartService: () -> Unit
+    onKeepAliveChanged: (Boolean) -> Unit
 ) {
     Column(
         modifier = modifier
@@ -584,14 +609,10 @@ fun SettingsContent(
             Card(
                 modifier = Modifier.weight(1f),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        text = AirPlayStrings.settingsSectionAppearance(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 18.sp
-                    )
+                    CardLabel(AirPlayStrings.settingsSectionAppearance(currentLanguage))
                     Spacer(modifier = Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         AppThemeMode.entries.forEach { theme ->
@@ -609,14 +630,10 @@ fun SettingsContent(
             Card(
                 modifier = Modifier.weight(1f),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        text = AirPlayStrings.settingsSectionLanguage(currentLanguage),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 18.sp
-                    )
+                    CardLabel(AirPlayStrings.settingsSectionLanguage(currentLanguage))
                     Spacer(modifier = Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         AppLanguage.entries.forEach { lang ->
@@ -635,18 +652,14 @@ fun SettingsContent(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp)
+            shape = RoundedCornerShape(12.dp)
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = AirPlayStrings.pinSettingTitle(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 18.sp
-                )
+                CardLabel(AirPlayStrings.pinSettingTitle(currentLanguage))
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = AirPlayStrings.pinSettingDesc(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -677,18 +690,14 @@ fun SettingsContent(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp)
+            shape = RoundedCornerShape(12.dp)
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = AirPlayStrings.avSyncTitle(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 18.sp
-                )
+                CardLabel(AirPlayStrings.avSyncTitle(currentLanguage))
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = AirPlayStrings.avSyncDesc(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -712,18 +721,14 @@ fun SettingsContent(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp)
+            shape = RoundedCornerShape(12.dp)
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = AirPlayStrings.settingKeepAliveTitle(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 18.sp
-                )
+                CardLabel(AirPlayStrings.settingKeepAliveTitle(currentLanguage))
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = AirPlayStrings.settingKeepAliveDesc(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -747,18 +752,14 @@ fun SettingsContent(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp)
+            shape = RoundedCornerShape(12.dp)
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = AirPlayStrings.discoveryRefreshTitle(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 18.sp
-                )
+                CardLabel(AirPlayStrings.discoveryRefreshTitle(currentLanguage))
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = AirPlayStrings.discoveryRefreshDesc(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -782,12 +783,7 @@ fun SettingsContent(
         val context = androidx.compose.ui.platform.LocalContext.current
         val macAddress = remember { DeviceIdentityHelper.getDeviceMacAddress(context) }
         TvCard(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = AirPlayStrings.deviceInfoTitle(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 18.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-            )
+            CardLabel(AirPlayStrings.deviceInfoTitle(currentLanguage))
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = AirPlayStrings.deviceInfoPort(currentLanguage),
@@ -806,31 +802,7 @@ fun SettingsContent(
             )
         }
 
-        // Restart Service Action Button
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            var isBtnFocused by remember { mutableStateOf(false) }
-            Button(
-                onClick = onRestartService,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isBtnFocused) AppleAccentBlue else MaterialTheme.colorScheme.surfaceVariant
-                ),
-                border = if (isBtnFocused) BorderStroke(2.dp, Color.White) else null,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.onFocusChanged { isBtnFocused = it.isFocused }
-            ) {
-                Text(
-                    text = AirPlayStrings.restartService(currentLanguage),
-                    fontSize = 15.sp,
-                    color = if (isBtnFocused) Color.White else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(36.dp))
+        Spacer(modifier = Modifier.height(12.dp))
     }
 }
 
@@ -841,7 +813,6 @@ fun AboutContent(
     appVersion: String
 ) {
     val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = modifier
@@ -861,16 +832,11 @@ fun AboutContent(
                         .background(AppleAccentBlue, CircleShape)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = AirPlayStrings.aboutDisclaimerTitle(currentLanguage),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 18.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                )
+                CardLabel(AirPlayStrings.aboutDisclaimerTitle(currentLanguage))
             }
             Text(
                 text = AirPlayStrings.aboutDisclaimerDesc(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 13.sp,
                 lineHeight = 20.sp
             )
@@ -888,7 +854,7 @@ fun AboutContent(
                         text = "AynaCast AirPlay TV Receiver",
                         color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 20.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -901,23 +867,18 @@ fun AboutContent(
                     text = AirPlayStrings.aboutVersion(appVersion, currentLanguage),
                     color = AppleAccentBlue,
                     fontSize = 16.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
 
         // Architecture Card
         TvCard {
-            Text(
-                text = AirPlayStrings.aboutArchitectureTitle(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 17.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-            )
+            CardLabel(AirPlayStrings.aboutArchitectureTitle(currentLanguage))
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = AirPlayStrings.aboutArchitectureDesc(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 lineHeight = 20.sp
             )
@@ -925,16 +886,11 @@ fun AboutContent(
 
         // Protocols Card
         TvCard {
-            Text(
-                text = AirPlayStrings.aboutProtocolsTitle(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 17.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-            )
+            CardLabel(AirPlayStrings.aboutProtocolsTitle(currentLanguage))
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = AirPlayStrings.aboutProtocolsDesc(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 lineHeight = 20.sp
             )
@@ -942,43 +898,25 @@ fun AboutContent(
 
         // Developer Card
         TvCard {
-            Text(
-                text = AirPlayStrings.aboutDeveloperTitle(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 17.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-            )
+            CardLabel(AirPlayStrings.aboutDeveloperTitle(currentLanguage))
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = AirPlayStrings.aboutDeveloperDesc(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 14.sp
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
             )
         }
 
         // License Card
         TvCard(
-            modifier = Modifier.onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) {
-                    coroutineScope.launch {
-                        scrollState.animateScrollBy(150f)
-                    }
-                    false
-                } else {
-                    false
-                }
-            }
+            modifier = Modifier.dpadScroll(scrollState)
         ) {
-            Text(
-                text = AirPlayStrings.aboutLicenseTitle(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 17.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-            )
+            CardLabel(AirPlayStrings.aboutLicenseTitle(currentLanguage))
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = AirPlayStrings.aboutLicenseDesc(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 lineHeight = 20.sp
             )
@@ -987,6 +925,44 @@ fun AboutContent(
         // Bottom spacer for comfortable TV viewing and scrolling clearance
         Spacer(modifier = Modifier.height(48.dp))
     }
+}
+
+/**
+ * For the last focusable card on a scrolling screen: with nothing below it to take focus, Down
+ * would not move the page and Up would jump focus (and the page) back to the header. While the
+ * card has focus, Down scrolls the page in steps until the end and Up scrolls back to where the
+ * card got focus before it lets focus leave.
+ */
+@Composable
+fun Modifier.dpadScroll(scrollState: ScrollState, step: Float = 240f): Modifier {
+    val scope = rememberCoroutineScope()
+    var focusScroll by remember { mutableIntStateOf(0) }
+    return this
+        .onFocusChanged { if (it.hasFocus) focusScroll = scrollState.value }
+        .onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+                Key.DirectionDown -> {
+                    // At the bottom, let focus move on (e.g. to the Close button below the page).
+                    if (scrollState.canScrollForward) {
+                        scope.launch { scrollState.animateScrollBy(step) }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                Key.DirectionUp -> {
+                    val back = (scrollState.value - focusScroll).toFloat()
+                    if (back > 0f) {
+                        scope.launch { scrollState.animateScrollBy(-minOf(step, back)) }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> false
+            }
+        }
 }
 
 @Composable
@@ -1007,17 +983,14 @@ fun TvCard(
             .onFocusChanged { isFocused = it.hasFocus }
             .then(if (focusable) Modifier.focusable() else Modifier),
         colors = CardDefaults.cardColors(
-            containerColor = backgroundColor ?: when {
-                isFocused -> MaterialTheme.colorScheme.surfaceVariant
-                else -> MaterialTheme.colorScheme.surface
-            }
+            containerColor = backgroundColor ?: MaterialTheme.colorScheme.surface
         ),
         border = when {
-            isFocused -> BorderStroke(2.5.dp, AppleAccentBlue)
+            isFocused -> BorderStroke(2.dp, AppleAccentBlue)
             borderColor != null -> BorderStroke(1.dp, borderColor)
             else -> BorderStroke(1.dp, Color.Transparent)
         },
-        shape = RoundedCornerShape(20.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(
             modifier = Modifier.padding(24.dp),
@@ -1027,10 +1000,82 @@ fun TvCard(
     }
 }
 
+/** Small spaced grey caption that opens a card, as on the Pitwall Updater info cards. */
 @Composable
-fun TvNavButton(
+fun CardLabel(text: String) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.sp
+    )
+}
+
+/** Vertical accent bar shown before screen and window titles. */
+@Composable
+fun AccentBar(height: Dp = 32.dp) {
+    Box(
+        modifier = Modifier
+            .width(6.dp)
+            .height(height)
+            .background(AppleAccentBlue, RoundedCornerShape(3.dp))
+    )
+}
+
+/** Pitwall-style info card: a caption on top and a bold value below it. */
+@Composable
+fun InfoCard(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    dotColor: Color? = null
+) {
+    Card(
+        modifier = modifier.height(104.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            CardLabel(title)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (dotColor != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(dotColor, CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+                Text(
+                    text = value,
+                    color = valueColor,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Focus fills the button with a light colour and turns the text dark, like the Pitwall Updater
+ * buttons; [isSelected] marks the active choice with the accent colour.
+ */
+@Composable
+private fun PitwallButton(
     text: String,
     isSelected: Boolean,
+    height: Dp,
+    fontSize: TextUnit,
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -1039,68 +1084,41 @@ fun TvNavButton(
         onClick = onClick,
         colors = ButtonDefaults.buttonColors(
             containerColor = when {
-                isFocused -> AppleAccentBlue
-                isSelected -> AppleAccentBlue.copy(alpha = 0.35f)
+                isFocused -> FocusFill
+                isSelected -> AppleAccentBlue
                 else -> MaterialTheme.colorScheme.surfaceVariant
+            },
+            contentColor = when {
+                isFocused -> AppleDarkBackground
+                isSelected -> Color.White
+                else -> MaterialTheme.colorScheme.onSurface
             }
         ),
-        border = when {
-            isFocused -> BorderStroke(3.dp, Color.White)
-            isSelected -> BorderStroke(2.dp, AppleAccentBlue)
-            else -> BorderStroke(1.dp, Color.Transparent)
-        },
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.onFocusChanged { isFocused = it.isFocused }
+        border = if (isFocused) BorderStroke(3.dp, FocusFill) else null,
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier
+            .height(height)
+            .onFocusChanged { isFocused = it.isFocused }
     ) {
         Text(
             text = text,
-            color = when {
-                isFocused -> Color.White
-                isSelected -> MaterialTheme.colorScheme.onSurface
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontSize = 15.sp,
-            fontWeight = if (isSelected || isFocused) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+            fontSize = fontSize,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 6.dp)
         )
     }
 }
+
+@Composable
+fun TvNavButton(
+    text: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) = PitwallButton(text = text, isSelected = isSelected, height = 52.dp, fontSize = 16.sp, onClick = onClick)
 
 @Composable
 fun TvChoiceChip(
     text: String,
     isSelected: Boolean,
     onClick: () -> Unit
-) {
-    var isFocused by remember { mutableStateOf(false) }
-
-    Button(
-        onClick = onClick,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = when {
-                isFocused -> AppleAccentBlue
-                isSelected -> AppleAccentBlue.copy(alpha = 0.25f)
-                else -> MaterialTheme.colorScheme.surfaceVariant
-            }
-        ),
-        border = when {
-            isFocused -> BorderStroke(2.5.dp, Color.White)
-            isSelected -> BorderStroke(1.5.dp, AppleAccentBlue)
-            else -> null
-        },
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.onFocusChanged { isFocused = it.isFocused }
-    ) {
-        Text(
-            text = text,
-            color = when {
-                isFocused -> Color.White
-                isSelected -> AppleAccentBlue
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontSize = 13.sp,
-            fontWeight = if (isSelected || isFocused) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        )
-    }
-}
+) = PitwallButton(text = text, isSelected = isSelected, height = 44.dp, fontSize = 14.sp, onClick = onClick)

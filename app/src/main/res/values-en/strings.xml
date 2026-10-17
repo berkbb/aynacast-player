@@ -26,8 +26,8 @@
     <string name="about_architecture_desc">Foreground Daemon Service + On-Demand Jetpack Compose for TV Interface.</string>
     <string name="about_protocols_title">Supported Protocols &amp; Engines</string>
     <string name="about_protocols_desc">Apple AirPlay Mirroring (RTSP 7000), mDNS/DNS-SD (_airplay._tcp, _raop._tcp), MediaCodec AVC H.264 Hardware Decoder, AAC-ELD / ALAC Audio, AudioTrack.</string>
-    <string name="about_developer_title">Developer &amp; Copyright</string>
-    <string name="about_developer_desc">Babadogan Tech &amp; Edu — Ankara University Technopolis</string>
+    <string name="about_developer_title">Publisher</string>
+    <string name="about_developer_desc">BABADOGAN TECH AND EDU</string>
     <string name="about_license_title">License</string>
     <string name="about_license_desc">Licensed under the GNU General Public License v3.0 (GPL-3.0).</string>
     <string name="about_disclaimer_title">Legal Disclaimer &amp; Trademark Notice</string>

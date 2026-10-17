@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,6 +78,9 @@ fun PairedDevicesDialog(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
+            // Room for a focused tile, which grows past its own bounds: without it the grid clips
+            // the tile's top under the title bar when the D-pad scrolls a lower row into view.
+            contentPadding = PaddingValues(16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -119,10 +123,10 @@ private fun PairedDeviceCard(
             .fillMaxWidth()
             .scale(if (hasFocus) 1.04f else 1f)
             .onFocusChanged { hasFocus = it.hasFocus }
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
             .border(
                 if (hasFocus) BorderStroke(2.dp, AppleAccentBlue) else BorderStroke(0.dp, Color.Transparent),
-                RoundedCornerShape(20.dp)
+                RoundedCornerShape(12.dp)
             )
             .padding(horizontal = 16.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally

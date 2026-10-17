@@ -197,8 +197,8 @@ The automated release workflow compiles both universal and split APKs alongside 
 ```
 
 Output directory: `dist/`
-- `AynaCastTV-v1.4.0-universal.apk` (All architectures)
-- `AynaCastTV-v1.4.0-arm64-v8a.apk` (ARM64 only)
-- `AynaCastTV-v1.4.0-armeabi-v7a.apk` (ARM7 only)
-- `AynaCastTV-v1.4.0-x86_64.apk` (x86_64 only)
-- `AynaCastTV-v1.4.0-release.aab` (Google Play Bundle)
+- `AynaCastTV-v1.5.1-universal.apk` (All architectures)
+- `AynaCastTV-v1.5.1-arm64-v8a.apk` (ARM64 only)
+- `AynaCastTV-v1.5.1-armeabi-v7a.apk` (ARM7 only)
+- `AynaCastTV-v1.5.1-x86_64.apk` (x86_64 only)
+- `AynaCastTV-v1.5.1-release.aab` (Google Play Bundle)

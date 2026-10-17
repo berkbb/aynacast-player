@@ -292,15 +292,37 @@ object AirPlayStrings {
     }
 
     fun aboutDeveloperTitle(lang: AppLanguage): String = when (lang) {
-        AppLanguage.TR -> "Geliştirici ve Telif"
-        AppLanguage.EN -> "Developer & Copyright"
-        AppLanguage.RO -> "Dezvoltator și drepturi de autor"
+        AppLanguage.TR -> "Yayıncı"
+        AppLanguage.EN -> "Publisher"
+        AppLanguage.RO -> "Editor"
     }
 
     fun aboutDeveloperDesc(lang: AppLanguage): String = when (lang) {
-        AppLanguage.TR -> "Babadogan Tech & Edu — Ankara Üniversitesi Teknokent"
-        AppLanguage.EN -> "Babadogan Tech & Edu — Ankara University Technopolis"
-        AppLanguage.RO -> "Babadogan Tech & Edu — Ankara University Technopolis"
+        AppLanguage.TR, AppLanguage.EN, AppLanguage.RO -> "BABADOGAN TECH AND EDU"
+    }
+
+    fun cardReceiverName(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AIRPLAY ADI"
+        AppLanguage.EN -> "AIRPLAY NAME"
+        AppLanguage.RO -> "NUME AIRPLAY"
+    }
+
+    fun cardVersion(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "SÜRÜM"
+        AppLanguage.EN -> "VERSION"
+        AppLanguage.RO -> "VERSIUNE"
+    }
+
+    fun cardStatus(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "DURUM"
+        AppLanguage.EN -> "STATUS"
+        AppLanguage.RO -> "STARE"
+    }
+
+    fun cardConnection(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "BAĞLANTI"
+        AppLanguage.EN -> "CONNECTION"
+        AppLanguage.RO -> "CONEXIUNE"
     }
 
     fun aboutLicenseTitle(lang: AppLanguage): String = when (lang) {
