@@ -5,10 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.babadogan.aynacast.tv.model.AppLanguage
 import com.babadogan.aynacast.tv.pairing.PinPairingManager
 import com.babadogan.aynacast.tv.ui.localization.AirPlayStrings
@@ -49,12 +49,16 @@ fun PairedDevicesDialog(
     }
     val dateFormat = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, locale)
 
-    Dialog(onDismissRequest = onDismiss) {
+    // Full screen so a long list scrolls inside the window instead of crowding the action row.
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Column(
             modifier = Modifier
-                .width(720.dp)
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
-                .padding(32.dp)
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 48.dp, vertical = 32.dp)
         ) {
             Text(
                 text = AirPlayStrings.pinPairedDevices(devices.size, language),
@@ -69,12 +73,10 @@ fun PairedDevicesDialog(
                 fontSize = 14.sp
             )
             Spacer(Modifier.padding(top = 20.dp))
-            // The list yields height to the header and buttons; a TV screen is only ~540dp tall,
-            // so a fixed 360dp list pushed the action row off the bottom and clipped its labels.
             LazyColumn(
                 modifier = Modifier
-                    .weight(1f, fill = false)
-                    .heightIn(max = 360.dp),
+                    .weight(1f)
+                    .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(devices, key = { it.key.contentHashCode() }) { device ->
@@ -108,7 +110,7 @@ fun PairedDevicesDialog(
                     }
                 }
             }
-            Spacer(Modifier.padding(top = 24.dp))
+            Spacer(Modifier.padding(top = 20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvChoiceChip(
                     text = AirPlayStrings.pairedDevicesForgetAll(language),
