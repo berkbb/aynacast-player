@@ -20,7 +20,9 @@ object AirPlayNativeBridge {
      * Implementations must not call back into [AirPlayNativeBridge] (the server may be stopping).
      */
     interface AirPlayNativeListener {
-        fun onClientConnected(deviceName: String, ipAddress: String)
+        /** [model] is the sender's hardware model (e.g. "iPhone15,2"), empty when unknown;
+         *  [clientKey] is the Ed25519 key it verified with, null for classic AirPlay senders. */
+        fun onClientConnected(deviceName: String, ipAddress: String, model: String, clientKey: ByteArray?)
         fun onStreamStarted()
         fun onStreamStopped()
 

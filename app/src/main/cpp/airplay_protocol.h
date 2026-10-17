@@ -27,7 +27,8 @@ enum class MediaType {
 struct ClientInfo {
     std::string deviceId;
     std::string deviceName;
-    std::string clientModel;
+    std::string clientModel;            // e.g. "iPhone15,2"; empty for classic AirPlay senders
+    std::vector<uint8_t> clientKey;     // Ed25519 key from pair-verify; empty when none was sent
     std::string ipAddress;
     int clientPort{0};
 };

@@ -196,7 +196,7 @@ Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(
     if (listener) {
         g_listenerObj = env->NewGlobalRef(listener);
         jclass clazz = env->GetObjectClass(listener);
-        g_midOnClientConnected = findMethod(env, clazz, "onClientConnected", "(Ljava/lang/String;Ljava/lang/String;)V");
+        g_midOnClientConnected = findMethod(env, clazz, "onClientConnected", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[B)V");
         g_midOnStreamStarted = findMethod(env, clazz, "onStreamStarted", "()V");
         g_midOnStreamStopped = findMethod(env, clazz, "onStreamStopped", "()V");
         g_midOnVideoStopped = findMethod(env, clazz, "onVideoStopped", "()V");
@@ -234,10 +234,14 @@ Java_com_babadogan_aynacast_tv_engine_AirPlayNativeBridge_initNativeServer(
         if (e && g_listenerObj && g_midOnClientConnected) {
             jstring jDev = newJavaString(e, info.deviceName); // may contain emoji
             jstring jIp = newJavaString(e, info.ipAddress);
-            e->CallVoidMethod(g_listenerObj, g_midOnClientConnected, jDev, jIp);
+            jstring jModel = newJavaString(e, info.clientModel);
+            jbyteArray jKey = info.clientKey.empty() ? nullptr : toByteArray(e, info.clientKey.data(), info.clientKey.size());
+            e->CallVoidMethod(g_listenerObj, g_midOnClientConnected, jDev, jIp, jModel, jKey);
             clearPendingException(e, "onClientConnected");
             e->DeleteLocalRef(jDev);
             e->DeleteLocalRef(jIp);
+            if (jModel) e->DeleteLocalRef(jModel);
+            if (jKey) e->DeleteLocalRef(jKey);
         }
     });
 

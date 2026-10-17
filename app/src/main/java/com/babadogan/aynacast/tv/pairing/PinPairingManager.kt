@@ -30,6 +30,7 @@ object PinPairingManager {
     private const val KEY_DEVICES = "paired_ed25519_keys"
     // Per device (suffixed with its Base64 key): the name it connected with and when it paired.
     private const val KEY_NAME_PREFIX = "name:"
+    private const val KEY_MODEL_PREFIX = "model:"
     private const val KEY_PAIRED_AT_PREFIX = "paired_at:"
     // A sender reports its name only when it starts streaming, right after pairing.
     private const val NAME_AFTER_PAIRING_MS = 30_000L
@@ -66,7 +67,7 @@ object PinPairingManager {
     val pairedDevices: StateFlow<List<ByteArray>> = _pairedDevices.asStateFlow()
 
     /** A paired device as listed in the settings. [name] is null for devices paired before names were kept. */
-    class PairedDevice(val key: ByteArray, val name: String?, val pairedAtMs: Long)
+    class PairedDevice(val key: ByteArray, val name: String?, val pairedAtMs: Long, val model: String? = null)
 
     private val _pairedDeviceDetails = MutableStateFlow<List<PairedDevice>>(emptyList())
     val pairedDeviceDetails: StateFlow<List<PairedDevice>> = _pairedDeviceDetails.asStateFlow()
@@ -214,13 +215,23 @@ object PinPairingManager {
         }
     }
 
-    /** A sender started streaming: names the device that paired just before, if any. */
+    /**
+     * A sender started streaming: names the device that paired just before, if any, and records
+     * the model of whichever paired device connected, so devices paired earlier learn theirs too.
+     */
     @Synchronized
-    fun onClientConnected(deviceName: String) {
-        val key = lastPairedKey ?: return
+    fun onClientConnected(deviceName: String, model: String, clientKey: ByteArray?) {
+        val justPaired = lastPairedKey
+            ?.takeIf { SystemClock.elapsedRealtime() - lastPairedAtElapsedMs <= NAME_AFTER_PAIRING_MS }
         lastPairedKey = null
-        if (SystemClock.elapsedRealtime() - lastPairedAtElapsedMs > NAME_AFTER_PAIRING_MS || deviceName.isBlank()) return
-        prefs?.edit { putString(KEY_NAME_PREFIX + encode(key), deviceName) }
+        val known = clientKey?.let { key -> _pairedDevices.value.firstOrNull { it.contentEquals(key) } }
+        val nameKey = justPaired?.takeIf { deviceName.isNotBlank() }
+        val modelKey = (known ?: justPaired)?.takeIf { model.isNotBlank() }
+        if (nameKey == null && modelKey == null) return
+        prefs?.edit {
+            if (nameKey != null) putString(KEY_NAME_PREFIX + encode(nameKey), deviceName)
+            if (modelKey != null) putString(KEY_MODEL_PREFIX + encode(modelKey), model)
+        }
         refreshDetails()
     }
 
@@ -262,6 +273,7 @@ object PinPairingManager {
 
     private fun SharedPreferences.Editor.removeDetails(encodedKey: String) {
         remove(KEY_NAME_PREFIX + encodedKey)
+        remove(KEY_MODEL_PREFIX + encodedKey)
         remove(KEY_PAIRED_AT_PREFIX + encodedKey)
     }
 
@@ -272,7 +284,8 @@ object PinPairingManager {
             PairedDevice(
                 key = key,
                 name = preferences?.getString(KEY_NAME_PREFIX + encoded, null),
-                pairedAtMs = preferences?.getLong(KEY_PAIRED_AT_PREFIX + encoded, 0L) ?: 0L
+                pairedAtMs = preferences?.getLong(KEY_PAIRED_AT_PREFIX + encoded, 0L) ?: 0L,
+                model = preferences?.getString(KEY_MODEL_PREFIX + encoded, null)
             )
         }.sortedByDescending { it.pairedAtMs }
     }

@@ -180,6 +180,10 @@ private:
     std::string deviceName_{"PhilipsTV"};
     std::string macAddress_{"00:11:22:33:44:55"};
     std::string clientName_;
+    std::string clientModel_;
+    // Ed25519 key a connection presented in pair-verify step 1; tells which paired device connected.
+    uint64_t verifyKeyConnection_{0};
+    std::vector<uint8_t> verifyKey_;
     // The last classic-AirPlay ANNOUNCE: its audio key (RSA-unwrapped), IV and ALAC parameters,
     // applied by that connection's Transport SETUP.
     struct LegacyAnnounce {

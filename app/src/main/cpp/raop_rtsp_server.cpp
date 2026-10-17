@@ -930,6 +930,9 @@ void RaopRtspServer::endSessionLocked(const char* reason) {
     {
         std::lock_guard<std::mutex> lock(configMutex_);
         clientName_.clear();
+        clientModel_.clear();
+        verifyKeyConnection_ = 0;
+        verifyKey_.clear();
         sessionClientIp_.clear();
     }
     if (wasStreaming && onStreamStopped_) onStreamStopped_();
@@ -1440,8 +1443,10 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
         // that paired with the PIN; otherwise answer 200 with no body so it starts PIN pairing.
         if (req.body.size() >= 68 && req.body[0] == 0x01) {
             std::lock_guard<std::mutex> lock(configMutex_);
+            std::vector<uint8_t> clientKey(req.body.begin() + 36, req.body.begin() + 68);
+            verifyKeyConnection_ = connectionId;
+            verifyKey_ = clientKey;
             if (pinRequired_) {
-                std::vector<uint8_t> clientKey(req.body.begin() + 36, req.body.begin() + 68);
                 bool paired = std::find(pairedClients_.begin(), pairedClients_.end(), clientKey) != pairedClients_.end();
                 if (!paired) {
                     LOGI("Pair-verify from an unpaired device; PIN pairing required");
@@ -1526,6 +1531,12 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
                 name && name->type == BplistValue::Type::String && !name->strVal.empty()) {
                 std::lock_guard<std::mutex> lock(configMutex_);
                 clientName_ = name->strVal;
+            }
+            // ...and its hardware model (e.g. "iPhone15,2"), which picks the paired-device icon.
+            if (const BplistValue* model = setup.find("model");
+                model && model->type == BplistValue::Type::String && !model->strVal.empty()) {
+                std::lock_guard<std::mutex> lock(configMutex_);
+                clientModel_ = model->strVal;
             }
             // It also announces the sender's NTP timing port; query its clock like UxPlay does.
             if (setup.find("ekey") || setup.find("timingPort")) {
@@ -1620,6 +1631,8 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
         {
             std::lock_guard<std::mutex> lock(configMutex_);
             info.deviceName = clientName_.empty() ? "Apple Device" : clientName_;
+            info.clientModel = clientModel_;
+            if (verifyKeyConnection_ == connectionId) info.clientKey = verifyKey_;
         }
         if (onClientConnected_) onClientConnected_(info);
         if (onStreamStarted_) onStreamStarted_();

@@ -560,10 +560,10 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
 
     // --- Native Callbacks (invoked on native server threads) ---
 
-    override fun onClientConnected(deviceName: String, ipAddress: String) {
-        Log.i(TAG, "AirPlay client connected: $deviceName ($ipAddress)")
+    override fun onClientConnected(deviceName: String, ipAddress: String, model: String, clientKey: ByteArray?) {
+        Log.i(TAG, "AirPlay client connected: $deviceName ($ipAddress, ${model.ifEmpty { "unknown model" }})")
         AirPlaySessionManager.notifyClientConnected(deviceName, ipAddress)
-        PinPairingManager.onClientConnected(deviceName)
+        PinPairingManager.onClientConnected(deviceName, model, clientKey)
     }
 
     override fun onStreamStarted() {

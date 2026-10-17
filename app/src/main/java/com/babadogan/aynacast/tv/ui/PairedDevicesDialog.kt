@@ -134,7 +134,7 @@ private fun PairedDeviceCard(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                painter = painterResource(deviceIconFor(device.name)),
+                painter = painterResource(deviceIconFor(device.model, device.name)),
                 contentDescription = null,
                 tint = AppleAccentBlue,
                 modifier = Modifier.size(38.dp)
@@ -167,14 +167,21 @@ private fun PairedDeviceCard(
     }
 }
 
-/** Pairing records only carry the name the device announced, so its kind is guessed from that. */
+/**
+ * The hardware model the device reported (e.g. "iPhone15,2", "MacBookPro18,3") decides the icon.
+ * Records without one (classic AirPlay senders, devices not seen since pairing) fall back to the name.
+ */
 @DrawableRes
-private fun deviceIconFor(name: String?): Int {
-    val n = name?.lowercase(Locale.ROOT) ?: return R.drawable.ic_device_generic
+private fun deviceIconFor(model: String?, name: String?): Int =
+    model?.let(::iconForText) ?: name?.let(::iconForText) ?: R.drawable.ic_device_generic
+
+@DrawableRes
+private fun iconForText(text: String): Int? {
+    val t = text.lowercase(Locale.ROOT)
     return when {
-        "ipad" in n -> R.drawable.ic_device_tablet
-        "iphone" in n || "ipod" in n -> R.drawable.ic_device_phone
-        "mac" in n -> R.drawable.ic_device_laptop
-        else -> R.drawable.ic_device_generic
+        "ipad" in t -> R.drawable.ic_device_tablet
+        "iphone" in t || "ipod" in t -> R.drawable.ic_device_phone
+        "mac" in t -> R.drawable.ic_device_laptop
+        else -> null
     }
 }
