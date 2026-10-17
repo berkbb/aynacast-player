@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.4.0] - 2026-10-17
 
 ### Documentation
 - README "Tested Devices & Compatibility" and a "Devices to test next" list in `LIVE_ADB_TESTS.md`: only two MediaTek-family 32-bit TVs are verified; Amlogic / Google TV (Android 12–14), arm64, NVIDIA Shield and a long run are still untested.

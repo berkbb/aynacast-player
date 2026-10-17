@@ -21,7 +21,7 @@
     <string name="lang_ro">Română</string>
 
     <!-- About & Legal Info Strings -->
-    <string name="about_version">Versiune: v1.3.0</string>
+    <string name="about_version">Versiune: v1.4.0</string>
     <string name="about_architecture_title">Arhitectură</string>
     <string name="about_architecture_desc">Serviciu daemon în prim-plan + interfață Jetpack Compose for TV deschisă la cerere.</string>
     <string name="about_protocols_title">Protocoale și motoare acceptate</string>

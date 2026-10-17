@@ -68,7 +68,9 @@ jetpack_compose_airplay/
 │   │   │   └── AppSettingsRepository.kt  # Persistent settings (language, theme, PIN, sync, visibility refresh, ...)
 │   │   ├── ui/
 │   │   │   ├── AirPlayPlayerActivity.kt  # Full-screen SurfaceView on-demand playback activity
-│   │   │   ├── AirPlaySettingsActivity.kt# Settings & About tabs with TV D-Pad focus controls
+│   │   │   ├── AirPlaySettingsActivity.kt# Home screen (status) plus the Settings and About windows, TV D-Pad focus
+│   │   │   ├── TvFullScreenWindow.kt     # Full-screen window with a top-right close button; Back closes it
+│   │   │   ├── PairedDevicesDialog.kt    # Paired devices as icon cards (icon from the reported model, music note for Mac Music)
 │   │   │   ├── OverlayPermissionDialog.kt# "Display over other apps" prompt on launch (Android 10+)
 │   │   │   ├── localization/
 │   │   │   │   └── AirPlayStrings.kt     # Typed catalog: Turkish (default), English, Romanian
@@ -195,8 +197,8 @@ The automated release workflow compiles both universal and split APKs alongside 
 ```
 
 Output directory: `dist/`
-- `AynaCastTV-v1.3.0-universal.apk` (All architectures)
-- `AynaCastTV-v1.3.0-arm64-v8a.apk` (ARM64 only)
-- `AynaCastTV-v1.3.0-armeabi-v7a.apk` (ARM7 only)
-- `AynaCastTV-v1.3.0-x86_64.apk` (x86_64 only)
-- `AynaCastTV-v1.3.0-release.aab` (Google Play Bundle)
+- `AynaCastTV-v1.4.0-universal.apk` (All architectures)
+- `AynaCastTV-v1.4.0-arm64-v8a.apk` (ARM64 only)
+- `AynaCastTV-v1.4.0-armeabi-v7a.apk` (ARM7 only)
+- `AynaCastTV-v1.4.0-x86_64.apk` (x86_64 only)
+- `AynaCastTV-v1.4.0-release.aab` (Google Play Bundle)

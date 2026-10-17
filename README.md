@@ -88,11 +88,11 @@ The automated packaging engine produces both universal and split-architecture bu
 
 | Package | Target | Size | Description |
 | :--- | :--- | :---: | :--- |
-| `AynaCastTV-v1.3.0-universal.apk` | Universal | ~12 MB | Single APK containing `arm64-v8a`, `armeabi-v7a`, and `x86_64`. |
-| `AynaCastTV-v1.3.0-arm64-v8a.apk` | 64-bit ARM | ~9.5 MB | Optimized for modern 64-bit Android TV & Google TV devices. |
-| `AynaCastTV-v1.3.0-armeabi-v7a.apk` | 32-bit ARM | ~9.0 MB | Optimized for legacy 32-bit Android TV boxes and sticks. |
-| `AynaCastTV-v1.3.0-x86_64.apk` | 64-bit x86 | ~9.5 MB | Optimized for Android TV emulators and Intel/AMD hardware. |
-| `AynaCastTV-v1.3.0-release.aab` | Google Play | ~11 MB | Official Android App Bundle for Google Play Console distribution. |
+| `AynaCastTV-v1.4.0-universal.apk` | Universal | ~12 MB | Single APK containing `arm64-v8a`, `armeabi-v7a`, and `x86_64`. |
+| `AynaCastTV-v1.4.0-arm64-v8a.apk` | 64-bit ARM | ~9.5 MB | Optimized for modern 64-bit Android TV & Google TV devices. |
+| `AynaCastTV-v1.4.0-armeabi-v7a.apk` | 32-bit ARM | ~9.0 MB | Optimized for legacy 32-bit Android TV boxes and sticks. |
+| `AynaCastTV-v1.4.0-x86_64.apk` | 64-bit x86 | ~9.5 MB | Optimized for Android TV emulators and Intel/AMD hardware. |
+| `AynaCastTV-v1.4.0-release.aab` | Google Play | ~11 MB | Official Android App Bundle for Google Play Console distribution. |
 
 ---
 
@@ -177,7 +177,7 @@ Reports are welcome: run [`LIVE_ADB_TESTS.md`](LIVE_ADB_TESTS.md) on your device
 - **Mac Music artwork** can be missing for the first song (the Mac sends an empty image); the next song's appears.
 - **DRM:** Netflix, Apple TV+, Disney+ and other FairPlay-protected videos are not supported by design; the TV shows "This video is protected".
 - **Android 10+ without "Display over other apps":** screens cannot open over another app; a toast tells you to open AynaCast TV.
-- Not yet verified: the 1.3.0 audio and Mac changes on Android 8, and a long (30 min+) run. Details and measurements: [`LIVE_ADB_TESTS.md`](LIVE_ADB_TESTS.md), [`CHANGELOG.md`](CHANGELOG.md).
+- Not yet verified: the 1.3.0 audio and Mac changes on Android 8, a long (30 min+) run, and the 1.4.0 window layout and paired-device icons on any TV. Details and measurements: [`LIVE_ADB_TESTS.md`](LIVE_ADB_TESTS.md), [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 

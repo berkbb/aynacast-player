@@ -21,7 +21,7 @@
     <string name="lang_ro">Romanian</string>
 
     <!-- About & Legal Info Strings -->
-    <string name="about_version">Version: v1.3.0</string>
+    <string name="about_version">Version: v1.4.0</string>
     <string name="about_architecture_title">Architecture Design</string>
     <string name="about_architecture_desc">Foreground Daemon Service + On-Demand Jetpack Compose for TV Interface.</string>
     <string name="about_protocols_title">Supported Protocols &amp; Engines</string>
