@@ -49,6 +49,7 @@ class AirPlayStringsTest {
             assertTrue(AirPlayStrings.aboutDeveloperDesc(lang).isNotBlank())
             assertTrue(AirPlayStrings.aboutLicenseTitle(lang).isNotBlank())
             assertTrue(AirPlayStrings.aboutLicenseDesc(lang).isNotBlank())
+            assertTrue(AirPlayStrings.viewLicense(lang).isNotBlank())
             assertTrue(AirPlayStrings.aboutDisclaimerTitle(lang).isNotBlank())
             assertTrue(AirPlayStrings.aboutDisclaimerDesc(lang).isNotBlank())
             assertTrue(AirPlayStrings.showMirroring(lang).isNotBlank())

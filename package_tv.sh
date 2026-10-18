@@ -38,6 +38,7 @@ case "$MODE" in
         mkdir -p "$DIST_DIR"
         rm -rf "$DIST_DIR"/*
         cp -f app/build/outputs/apk/debug/*.apk "$DIST_DIR/" 2>/dev/null || true
+        (cd "$DIST_DIR" && shasum -a 256 *.apk > SHA256SUMS 2>/dev/null || true)
         echo ""
         echo "=========================================================="
         echo "✅ Debug paketleri oluşturuldu ($DIST_DIR):"
@@ -54,6 +55,7 @@ case "$MODE" in
         rm -rf "$DIST_DIR"/*
 
         cp -f app/build/outputs/apk/release/*.apk "$DIST_DIR/" 2>/dev/null || true
+        (cd "$DIST_DIR" && shasum -a 256 *.apk > SHA256SUMS)
 
         echo ""
         echo "=========================================================="

@@ -337,6 +337,12 @@ object AirPlayStrings {
         AppLanguage.RO -> "Licențiat sub GNU General Public License v3.0 (GPL-3.0)."
     }
 
+    fun viewLicense(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Lisansı Görüntüle"
+        AppLanguage.EN -> "View License"
+        AppLanguage.RO -> "Vizualizează licența"
+    }
+
     fun aboutDisclaimerTitle(lang: AppLanguage): String = when (lang) {
         AppLanguage.TR -> "Yasal Uyarı ve Marka Bildirimi"
         AppLanguage.EN -> "Legal Disclaimer & Trademark Notice"

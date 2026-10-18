@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.5.1] - 2026-10-18
 
+### Added
+- **Read-Only License Viewer:** One-click/tap read-only GPL-3.0 license viewer dialog (`LicenseViewerDialog`) directly accessible from the License card on the About screen, complete with TV remote D-Pad scrolling and full monospace license text.
+- **SHA-256 Verification:** Automated SHA-256 hash generation (`SHA256SUMS`) in `package_tv.sh` alongside all release and debug APK artifacts.
+
 ### Changed
 - **Packaging:** APK outputs now have distinctive, architecture-specific names (`AynaCastTV-v1.5.1-<abi>-<buildType>.apk`) directly from Gradle and the packaging script; dropped Google Play AAB bundle generation in favor of direct installable APKs, while preserving the Universal APK build.
 - **Settings and About:** a Close button at the bottom of the window as well as the one in the top-right corner, as in Pitwall Updater. In Settings, Restart Service moved down next to it, so both stay on screen while the page scrolls.

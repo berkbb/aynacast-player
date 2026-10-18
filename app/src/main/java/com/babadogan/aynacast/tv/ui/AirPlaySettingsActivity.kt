@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -909,17 +910,51 @@ fun AboutContent(
         }
 
         // License Card
-        TvCard(
-            modifier = Modifier.dpadScroll(scrollState)
-        ) {
-            CardLabel(AirPlayStrings.aboutLicenseTitle(currentLanguage))
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = AirPlayStrings.aboutLicenseDesc(currentLanguage),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 14.sp,
-                lineHeight = 20.sp
+        var showLicenseViewer by rememberSaveable { mutableStateOf(false) }
+
+        if (showLicenseViewer) {
+            LicenseViewerDialog(
+                language = currentLanguage,
+                onDismiss = { showLicenseViewer = false }
             )
+        }
+
+        TvCard(
+            modifier = Modifier.dpadScroll(scrollState),
+            onClick = { showLicenseViewer = true }
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    CardLabel(AirPlayStrings.aboutLicenseTitle(currentLanguage))
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = AirPlayStrings.aboutLicenseDesc(currentLanguage),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Box(
+                    modifier = Modifier
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = AirPlayStrings.viewLicense(currentLanguage),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
 
         // Bottom spacer for comfortable TV viewing and scrolling clearance
@@ -973,6 +1008,7 @@ fun TvCard(
     // A card holding its own controls must not take focus itself: D-pad focus search only moves
     // between siblings, so the controls inside a focusable card are unreachable with the arrows.
     focusable: Boolean = true,
+    onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -981,7 +1017,15 @@ fun TvCard(
         modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { isFocused = it.hasFocus }
-            .then(if (focusable) Modifier.focusable() else Modifier),
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else if (focusable) {
+                    Modifier.focusable()
+                } else {
+                    Modifier
+                }
+            ),
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor ?: MaterialTheme.colorScheme.surface
         ),
