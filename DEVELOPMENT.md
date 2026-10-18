@@ -186,7 +186,7 @@ To run static analysis and lint vital checks:
 
 ## 6. Packaging & Release Builds
 
-The automated release workflow compiles both universal and split APKs alongside an AAB bundle:
+The automated release workflow compiles both universal and split APKs:
 
 ```bash
 # Terminal release package
@@ -197,8 +197,7 @@ The automated release workflow compiles both universal and split APKs alongside 
 ```
 
 Output directory: `dist/`
-- `AynaCastTV-v1.5.1-universal.apk` (All architectures)
-- `AynaCastTV-v1.5.1-arm64-v8a.apk` (ARM64 only)
-- `AynaCastTV-v1.5.1-armeabi-v7a.apk` (ARM7 only)
-- `AynaCastTV-v1.5.1-x86_64.apk` (x86_64 only)
-- `AynaCastTV-v1.5.1-release.aab` (Google Play Bundle)
+- `AynaCastTV-v1.5.1-universal-release.apk` (All architectures)
+- `AynaCastTV-v1.5.1-arm64-v8a-release.apk` (ARM64 only)
+- `AynaCastTV-v1.5.1-armeabi-v7a-release.apk` (ARM7 only)
+- `AynaCastTV-v1.5.1-x86_64-release.apk` (x86_64 only)

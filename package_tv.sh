@@ -10,6 +10,16 @@ if [[ -z "${JAVA_HOME:-}" ]]; then
     fi
 fi
 
+if [[ -z "${ANDROID_HOME:-}" ]]; then
+    if [[ -d "/Users/berkbabadogan/SDK/Android" ]]; then
+        export ANDROID_HOME="/Users/berkbabadogan/SDK/Android"
+    elif [[ -d "$HOME/SDK/Android" ]]; then
+        export ANDROID_HOME="$HOME/SDK/Android"
+    elif [[ -d "$HOME/Library/Android/sdk" ]]; then
+        export ANDROID_HOME="$HOME/Library/Android/sdk"
+    fi
+fi
+
 MODE="${1:-release}"
 # Single source of truth: versionName in app/build.gradle.kts
 VERSION="$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
@@ -23,44 +33,27 @@ echo "=========================================================="
 
 case "$MODE" in
     debug)
+        echo "📦 Debug APK'lar derleniyor..."
         ./gradlew :app:assembleDebug
         mkdir -p "$DIST_DIR"
+        rm -rf "$DIST_DIR"/*
         cp -f app/build/outputs/apk/debug/*.apk "$DIST_DIR/" 2>/dev/null || true
         echo ""
-        echo "✅ Debug paketleri oluşturuldu: $DIST_DIR"
+        echo "=========================================================="
+        echo "✅ Debug paketleri oluşturuldu ($DIST_DIR):"
+        echo "=========================================================="
+        ls -lh "$DIST_DIR"
+        echo "=========================================================="
         ;;
 
     release)
-        echo "📦 Release APK'lar (Universal, ARM64, ARM7, x64) ve AAB paketi derleniyor..."
-        ./gradlew :app:assembleRelease :app:bundleRelease
+        echo "📦 Release APK'lar (Universal, ARM64, ARM7, x64) derleniyor..."
+        ./gradlew :app:assembleRelease
 
         mkdir -p "$DIST_DIR"
         rm -rf "$DIST_DIR"/*
 
-        # 1. Universal APK
-        if compgen -G "app/build/outputs/apk/release/*universal*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*universal*.apk "$DIST_DIR/AynaCastTV-v$VERSION-universal.apk"
-        fi
-
-        # 2. ARM64 (arm64-v8a)
-        if compgen -G "app/build/outputs/apk/release/*arm64-v8a*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*arm64-v8a*.apk "$DIST_DIR/AynaCastTV-v$VERSION-arm64-v8a.apk"
-        fi
-
-        # 3. ARMv7 (armeabi-v7a)
-        if compgen -G "app/build/outputs/apk/release/*armeabi-v7a*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*armeabi-v7a*.apk "$DIST_DIR/AynaCastTV-v$VERSION-armeabi-v7a.apk"
-        fi
-
-        # 4. x86_64
-        if compgen -G "app/build/outputs/apk/release/*x86_64*.apk" > /dev/null; then
-            cp app/build/outputs/apk/release/*x86_64*.apk "$DIST_DIR/AynaCastTV-v$VERSION-x86_64.apk"
-        fi
-
-        # 5. Android App Bundle (AAB)
-        if compgen -G "app/build/outputs/bundle/release/*.aab" > /dev/null; then
-            cp app/build/outputs/bundle/release/*.aab "$DIST_DIR/AynaCastTV-v$VERSION-release.aab"
-        fi
+        cp -f app/build/outputs/apk/release/*.apk "$DIST_DIR/" 2>/dev/null || true
 
         echo ""
         echo "=========================================================="

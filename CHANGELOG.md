@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.5.1] - 2026-10-17
+## [1.5.1] - 2026-10-18
 
 ### Changed
+- **Packaging:** APK outputs now have distinctive, architecture-specific names (`AynaCastTV-v1.5.1-<abi>-<buildType>.apk`) directly from Gradle and the packaging script; dropped Google Play AAB bundle generation in favor of direct installable APKs, while preserving the Universal APK build.
 - **Settings and About:** a Close button at the bottom of the window as well as the one in the top-right corner, as in Pitwall Updater. In Settings, Restart Service moved down next to it, so both stay on screen while the page scrolls.
 - **Home screen:** fits on one screen, so moving to the lower cards no longer scrolls the info cards out of view; the How to Connect card is text only and the remote skips it.
 

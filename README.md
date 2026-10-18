@@ -88,22 +88,21 @@ The automated packaging engine produces both universal and split-architecture bu
 
 | Package | Target | Size | Description |
 | :--- | :--- | :---: | :--- |
-| `AynaCastTV-v1.5.1-universal.apk` | Universal | ~12 MB | Single APK containing `arm64-v8a`, `armeabi-v7a`, and `x86_64`. |
-| `AynaCastTV-v1.5.1-arm64-v8a.apk` | 64-bit ARM | ~9.5 MB | Optimized for modern 64-bit Android TV & Google TV devices. |
-| `AynaCastTV-v1.5.1-armeabi-v7a.apk` | 32-bit ARM | ~9.0 MB | Optimized for legacy 32-bit Android TV boxes and sticks. |
-| `AynaCastTV-v1.5.1-x86_64.apk` | 64-bit x86 | ~9.5 MB | Optimized for Android TV emulators and Intel/AMD hardware. |
-| `AynaCastTV-v1.5.1-release.aab` | Google Play | ~11 MB | Official Android App Bundle for Google Play Console distribution. |
+| `AynaCastTV-v1.5.1-universal-release.apk` | Universal | ~12 MB | Single APK containing `arm64-v8a`, `armeabi-v7a`, and `x86_64`. |
+| `AynaCastTV-v1.5.1-arm64-v8a-release.apk` | 64-bit ARM | ~9.5 MB | Optimized for modern 64-bit Android TV & Google TV devices. |
+| `AynaCastTV-v1.5.1-armeabi-v7a-release.apk` | 32-bit ARM | ~9.0 MB | Optimized for legacy 32-bit Android TV boxes and sticks. |
+| `AynaCastTV-v1.5.1-x86_64-release.apk` | 64-bit x86 | ~9.5 MB | Optimized for Android TV emulators and Intel/AMD hardware. |
 
 ---
 
 ## 🛠️ Build & Package Instructions
 
 ### 1. Using macOS Finder (One-Click)
-Double-click [`AynaCastTV-Package.command`](AynaCastTV-Package.command) in the project root. It will compile all release APKs and the AAB bundle, and automatically open the `dist/` folder when finished.
+Double-click [`AynaCastTV-Package.command`](AynaCastTV-Package.command) in the project root. It will compile all release APKs and automatically open the `dist/` folder when finished.
 
 ### 2. Using Terminal Command
 ```bash
-# Build all release packages (Universal, ARM64, ARM7, x64, AAB)
+# Build all release packages (Universal, ARM64, ARM7, x64)
 ./package_tv.sh release
 
 # Build debug package

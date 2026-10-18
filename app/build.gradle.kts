@@ -82,6 +82,10 @@ android {
     }
 }
 
+base {
+    archivesName.set("AynaCastTV-v${android.defaultConfig.versionName}")
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)

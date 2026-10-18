@@ -20,8 +20,8 @@ the same layout.
 - Android platform-tools (`adb`) on the computer. `dns-sd`, `nc` and `curl` come with macOS.
 - APK: build the repository (`./gradlew :app:assembleDebug` → `app/build/outputs/apk/debug/`). The build
   produces one APK per CPU architecture: find the TV's with `adb shell getprop ro.product.cpu.abilist`
-  and install the matching one (`app-armeabi-v7a-debug.apk`, `app-arm64-v8a-debug.apk`) or
-  `app-universal-debug.apk`. Alternatively use the package `./package_tv.sh release` creates under `dist/`.
+  and install the matching one (`AynaCastTV-v1.5.1-armeabi-v7a-debug.apk`, `AynaCastTV-v1.5.1-arm64-v8a-debug.apk`) or
+  `AynaCastTV-v1.5.1-universal-debug.apk`. Alternatively use the package `./package_tv.sh release` creates under `dist/`.
 
 ### ADB over the network on the TV
 1. Settings → Device Preferences → About → press **Build** 7 times.
@@ -52,7 +52,7 @@ tvlog() {
 ### Connect, install, grant permissions
 ```bash
 adb connect "$TV"
-adb -s "$TV" install -r app/build/outputs/apk/debug/app-universal-debug.apk   # or the APK for the TV's architecture
+adb -s "$TV" install -r app/build/outputs/apk/debug/AynaCastTV-v1.5.1-universal-debug.apk   # or the APK for the TV's architecture
 # Lets the app open its screens from the background (otherwise the notification fallback is used – see Test 10)
 adb -s "$TV" shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow
 # Notification permission on Android 13+
