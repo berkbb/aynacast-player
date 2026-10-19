@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.3] - 2026-10-19
+
+### Fixed
+- **Update window focus:** the remote's focus now starts on "Update Now" (or Close) when the result appears, instead of on nothing, so OK works at once.
+
 ## [1.5.2] - 2026-10-19
 
 ### Added
