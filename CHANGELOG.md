@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.2] - 2026-10-19
+
+### Added
+- **Update from GitHub:** "Check for Updates" at the bottom of About checks AynaCast's GitHub releases and opens a result window: up to date, no published release / repository not public, GitHub unreachable, or a newer version. "Update Now" downloads the release APK for the TV's processor (arm64-v8a / armeabi-v7a / x86_64, else universal), checks it against the SHA-256 digest GitHub publishes and installs it over the app after the TV's confirmation prompt; AynaCast reopens by itself after the update. Without the "Install unknown apps" permission its setting opens first. If the installed app has a different signing key, the window explains to uninstall AynaCast and install the new version.
+- **Signing check when packaging:** `package_tv.sh` compares the release APK's signing certificate with `release-cert.sha256` and prints a SIGNING KEY MISMATCH warning when they differ.
+
 ## [1.5.1] - 2026-10-18
 
 ### Added
