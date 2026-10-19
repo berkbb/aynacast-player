@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import com.babadogan.aynacast.tv.model.AppLanguage
 import com.babadogan.aynacast.tv.ui.localization.AirPlayStrings
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentBlue
@@ -71,7 +72,13 @@ fun SelfUpdateWindow(check: UpdateCheck, install: UpdateInstall, language: AppLa
     val busy = install is UpdateInstall.Downloading || install is UpdateInstall.WaitingForConfirmation
 
     TvFullScreenWindow(title = AirPlayStrings.checkUpdates(language), language = language, onDismiss = onDismiss) {
-        LaunchedEffect(check is UpdateCheck.Checking) { runCatching { primaryFocus.requestFocus() } }
+        // The buttons appear only with the result, and the window may still be taking focus from
+        // About underneath: ask once they exist, after a frame or two.
+        LaunchedEffect(check is UpdateCheck.Checking, canInstall) {
+            if (check is UpdateCheck.Checking) return@LaunchedEffect
+            delay(150)
+            runCatching { primaryFocus.requestFocus() }
+        }
         Column(
             modifier = Modifier.fillMaxWidth().weight(1f),
             horizontalAlignment = Alignment.CenterHorizontally,
