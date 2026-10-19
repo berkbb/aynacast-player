@@ -20,6 +20,9 @@
     <!-- System alert window / Full-screen launch for on-demand overlay -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- Updating the app itself from its GitHub releases (About > Check for Updates) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Android TV Hardware compatibility -->
     <uses-feature
         android:name="android.software.leanback"
@@ -127,6 +130,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Self-update: the installer's result, and reopening the app after the update -->
+        <receiver
+            android:name=".update.InstallResultReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".update.RestartAfterUpdateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

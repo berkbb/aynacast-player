@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import com.babadogan.aynacast.tv.update.SelfUpdater
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -208,6 +209,13 @@ class AirPlaySettingsActivity : ComponentActivity() {
                             title = AirPlayStrings.tabAbout(appSettings.language),
                             language = appSettings.language,
                             bottomClose = true,
+                            bottomActions = {
+                                TvNavButton(
+                                    text = AirPlayStrings.checkUpdates(appSettings.language),
+                                    isSelected = false,
+                                    onClick = { SelfUpdater.startCheck(appVersion) }
+                                )
+                            },
                             onDismiss = { showAbout = false }
                         ) {
                             AboutContent(
@@ -216,6 +224,16 @@ class AirPlaySettingsActivity : ComponentActivity() {
                                 appVersion = appVersion
                             )
                         }
+                    }
+                    val updateCheck by SelfUpdater.check.collectAsState()
+                    val updateInstall by SelfUpdater.install.collectAsState()
+                    updateCheck?.let { check ->
+                        SelfUpdateWindow(
+                            check = check,
+                            install = updateInstall,
+                            language = appSettings.language,
+                            onDismiss = { SelfUpdater.dismiss() }
+                        )
                     }
                     if (!canDrawOverlays && !overlayPromptDone && !showPairedDevices && !showSettings && !showAbout) {
                         OverlayPermissionDialog(
@@ -245,6 +263,7 @@ class AirPlaySettingsActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         overlayPermissionGranted.value = hasOverlayPermission()
+        SelfUpdater.onResume(this)
     }
 
     override fun onDestroy() {
@@ -1120,6 +1139,7 @@ private fun PitwallButton(
     isSelected: Boolean,
     height: Dp,
     fontSize: TextUnit,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -1140,7 +1160,7 @@ private fun PitwallButton(
         ),
         border = if (isFocused) BorderStroke(3.dp, FocusFill) else null,
         shape = RoundedCornerShape(8.dp),
-        modifier = Modifier
+        modifier = modifier
             .height(height)
             .onFocusChanged { isFocused = it.isFocused }
     ) {
@@ -1157,8 +1177,9 @@ private fun PitwallButton(
 fun TvNavButton(
     text: String,
     isSelected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
-) = PitwallButton(text = text, isSelected = isSelected, height = 52.dp, fontSize = 16.sp, onClick = onClick)
+) = PitwallButton(text = text, isSelected = isSelected, height = 52.dp, fontSize = 16.sp, modifier = modifier, onClick = onClick)
 
 @Composable
 fun TvChoiceChip(

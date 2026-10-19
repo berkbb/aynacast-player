@@ -718,4 +718,112 @@ object AirPlayStrings {
         AppLanguage.EN -> "Close"
         AppLanguage.RO -> "Închide"
     }
+
+    fun checkUpdates(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Güncellemeleri Denetle"
+        AppLanguage.EN -> "Check for Updates"
+        AppLanguage.RO -> "Verifică actualizările"
+    }
+
+    fun checkingUpdates(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Güncellemeler denetleniyor…"
+        AppLanguage.EN -> "Checking for updates…"
+        AppLanguage.RO -> "Se verifică actualizările…"
+    }
+
+    fun updateUpToDateTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Güncelsiniz"
+        AppLanguage.EN -> "Up to date"
+        AppLanguage.RO -> "Actualizat"
+    }
+
+    fun updateUpToDate(current: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yeni sürüm yok: AynaCast'in en güncel sürümünü (v$current) kullanıyorsunuz."
+        AppLanguage.EN -> "No new version: you are using the latest AynaCast (v$current)."
+        AppLanguage.RO -> "Nicio versiune nouă: utilizați cea mai recentă versiune AynaCast (v$current)."
+    }
+
+    fun updateAvailableTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yeni sürüm mevcut"
+        AppLanguage.EN -> "New version available"
+        AppLanguage.RO -> "Versiune nouă disponibilă"
+    }
+
+    fun updateAvailableInstall(latest: String, current: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AynaCast v$latest yayınlandı (yüklü: v$current). Şimdi kendini indirip kurabilir."
+        AppLanguage.EN -> "AynaCast v$latest is out (installed: v$current). It can download and install itself now."
+        AppLanguage.RO -> "AynaCast v$latest a fost lansată (instalată: v$current). Se poate descărca și instala acum."
+    }
+
+    fun updateAvailableManual(latest: String, current: String, page: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "AynaCast v$latest yayınlandı (yüklü: v$current). Bu TV'ye uygun APK'yı $page adresinden indirin."
+        AppLanguage.EN -> "AynaCast v$latest is out (installed: v$current). Download the APK for this TV from $page."
+        AppLanguage.RO -> "AynaCast v$latest a fost lansată (instalată: v$current). Descărcați APK-ul pentru acest televizor de la $page."
+    }
+
+    fun updateFailedTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Güncelleme denetlenemedi"
+        AppLanguage.EN -> "Could not check for updates"
+        AppLanguage.RO -> "Nu s-au putut verifica actualizările"
+    }
+
+    fun updateUnavailable(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "GitHub'da yayınlanmış bir sürüm bulunamadı ya da depo herkese açık değil."
+        AppLanguage.EN -> "No published release was found on GitHub, or the repository is not public."
+        AppLanguage.RO -> "Nu a fost găsită nicio versiune publicată pe GitHub sau depozitul nu este public."
+    }
+
+    fun updateOffline(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "GitHub'a ulaşılamadı. TV'nin internet bağlantısını denetleyip tekrar deneyin."
+        AppLanguage.EN -> "GitHub could not be reached. Check the TV's internet connection and try again."
+        AppLanguage.RO -> "GitHub nu a putut fi accesat. Verificați conexiunea la internet a televizorului și încercați din nou."
+    }
+
+    fun updateNow(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Şimdi Güncelle"
+        AppLanguage.EN -> "Update Now"
+        AppLanguage.RO -> "Actualizează acum"
+    }
+
+    fun updateLater(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Sonra"
+        AppLanguage.EN -> "Later"
+        AppLanguage.RO -> "Mai târziu"
+    }
+
+    fun updateDownloading(percent: Int, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "İndiriliyor: %$percent"
+        AppLanguage.EN -> "Downloading: $percent%"
+        AppLanguage.RO -> "Se descarcă: $percent%"
+    }
+
+    fun updateConfirm(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "TV'de çıkan kurulum onayında YÜKLE'ye basın. Güncellemeden sonra AynaCast yeniden açılır."
+        AppLanguage.EN -> "Press INSTALL in the installation prompt on the TV. AynaCast reopens after the update."
+        AppLanguage.RO -> "Apăsați INSTALARE în solicitarea de instalare de pe televizor. AynaCast se redeschide după actualizare."
+    }
+
+    fun updatePermission(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Açılan ayarda AynaCast için \"Bilinmeyen uygulamaları yükle\" iznini açın, sonra Şimdi Güncelle'ye tekrar basın."
+        AppLanguage.EN -> "In the setting that opens, allow \"Install unknown apps\" for AynaCast, then press Update Now again."
+        AppLanguage.RO -> "În setarea care se deschide, permiteți „Instalare aplicații necunoscute” pentru AynaCast, apoi apăsați din nou Actualizează acum."
+    }
+
+    fun updateDownloadFailed(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yeni sürüm indirilemedi ya da doğrulanamadı. İnternet bağlantısını denetleyip tekrar deneyin."
+        AppLanguage.EN -> "The new version could not be downloaded or verified. Check the internet connection and try again."
+        AppLanguage.RO -> "Noua versiune nu a putut fi descărcată sau verificată. Verificați conexiunea la internet și încercați din nou."
+    }
+
+    fun updateSignatureConflict(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yüklü AynaCast farklı bir anahtarla imzalanmış; yeni sürüm üzerine kurulamaz. AynaCast'i kaldırıp yeni sürümü yeniden kurun (ayarlar ve eşleşmiş cihazlar silinir)."
+        AppLanguage.EN -> "The installed AynaCast is signed with a different key, so the new version cannot install over it. Uninstall AynaCast, then install the new version (settings and paired devices are removed)."
+        AppLanguage.RO -> "AynaCast instalat este semnat cu o altă cheie, deci noua versiune nu se poate instala peste el. Dezinstalați AynaCast, apoi instalați noua versiune (setările și dispozitivele asociate se șterg)."
+    }
+
+    fun updateInstallFailed(reason: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Sistem yükleyicisi güncellemeyi kurmadı. $reason"
+        AppLanguage.EN -> "The system installer did not install the update. $reason"
+        AppLanguage.RO -> "Programul de instalare al sistemului nu a instalat actualizarea. $reason"
+    }
 }
