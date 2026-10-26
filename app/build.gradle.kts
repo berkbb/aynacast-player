@@ -1,10 +1,30 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 // AGP 9 compiles Kotlin natively (built-in Kotlin); only the Compose compiler plugin is applied
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
 }
+
+// Release signing, first match wins: keystore.properties (git-ignored), AYNACAST_* environment
+// variables, or the TV apps' shared keystore ~/.signing/babadogan-tv-release.p12, whose password
+// is the macOS Keychain item "babadogan-tv-release-keystore".
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun signingValue(key: String, env: String): String? = keystoreProperties.getProperty(key) ?: System.getenv(env)
+val sharedKeystore = File(System.getProperty("user.home"), ".signing/babadogan-tv-release.p12")
+val releaseStoreFile = signingValue("storeFile", "AYNACAST_KEYSTORE_FILE") ?: sharedKeystore.takeIf { it.isFile }?.path
+// macOS only; elsewhere the password comes from keystore.properties or the environment.
+fun keychainPassword(): String? = runCatching {
+    providers.exec {
+        commandLine("security", "find-generic-password", "-s", "babadogan-tv-release-keystore", "-w")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim()
+}.getOrNull()?.ifEmpty { null }
+val releaseStorePassword = releaseStoreFile?.let { signingValue("storePassword", "AYNACAST_KEYSTORE_PASSWORD") ?: keychainPassword() }
 
 android {
     namespace = "com.babadogan.aynacast.tv"
@@ -35,10 +55,27 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseStoreFile != null) {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = signingValue("keyAlias", "AYNACAST_KEY_ALIAS") ?: "babadogan-tv"
+                keyPassword = signingValue("keyPassword", "AYNACAST_KEY_PASSWORD") ?: releaseStorePassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseStoreFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                // Keeps local builds working; debug-signed APKs cannot update installed TVs
+                logger.warn("AynaCast: no release keystore (keystore.properties, AYNACAST_KEYSTORE_FILE or ~/.signing/babadogan-tv-release.p12); signing release with the debug key.")
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

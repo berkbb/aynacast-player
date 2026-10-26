@@ -112,7 +112,9 @@ Double-click [`AynaCastTV-Package.command`](AynaCastTV-Package.command) in the p
 ./gradlew test
 ```
 
-**Release signing.** Installed copies only accept an update signed with the same key, and the in-app update (About > Check for Updates) depends on it. `release-cert.sha256` holds the expected signing certificate; the packaging script compares every release against it and prints a **SIGNING KEY MISMATCH** warning when they differ. A build with a different key cannot update existing installations: on those devices the app must be uninstalled first and the new version installed again, which removes its data. To keep the key, package on the original machine or copy its `~/.android/debug.keystore`.
+**Release signing.** Installed copies only accept an update signed with the same key, and the in-app update (About > Check for Updates) depends on it. `release-cert.sha256` holds the expected signing certificate; the packaging script compares every release against it and prints a **SIGNING KEY MISMATCH** warning when they differ. A build with a different key cannot update existing installations: on those devices the app must be uninstalled first and the new version installed again, which removes its data.
+
+Release builds are signed with the first of: a git-ignored `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`), the `AYNACAST_KEYSTORE_FILE` / `AYNACAST_KEYSTORE_PASSWORD` / `AYNACAST_KEY_ALIAS` / `AYNACAST_KEY_PASSWORD` environment variables, or the keystore shared by the TV apps, `~/.signing/babadogan-tv-release.p12` (alias `babadogan-tv`), whose password Gradle reads from the macOS Keychain item `babadogan-tv-release-keystore`. Without any of them the build falls back to the local debug key and warns. To package on another Mac, copy the keystore to the same place and add its password there with `security add-generic-password -a "$USER" -s babadogan-tv-release-keystore -T /usr/bin/security -w` (it asks for the password).
 
 ### 3. Using Android Studio
 1. Open Android Studio and choose **Open Project**.

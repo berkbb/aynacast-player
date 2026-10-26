@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Security
+- **Release signing off the debug keystore:** release builds were signed with `~/.android/debug.keystore`, whose password is public. Releases now use the TV apps' shared keystore `~/.signing/babadogan-tv-release.p12` (same certificate, so installed TVs keep updating) with a strong password kept in the macOS Keychain, or `keystore.properties` / `AYNACAST_*` variables; the debug key is only a fallback with a warning.
+
 ## [1.5.4] - 2026-10-26
 
 ### Security

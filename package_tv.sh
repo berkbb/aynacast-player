@@ -53,7 +53,7 @@ check_release_signing() {
    (the app's data and settings are removed).
    Beklenen anahtarla kurulu cihazlar bu sürüme GÜNCELLENEMEZ, uygulama içi güncelleme de çalışmaz.
    O cihazlarda uygulamayı önce kaldırın, sonra bu sürümü yeniden kurun (uygulama verileri silinir).
-   To keep the key, build on the original machine or copy its ~/.android/debug.keystore here.
+   To keep the key, build where ~/.signing/babadogan-tv-release.p12 and its Keychain password are set up (README, Release signing).
 
 WARN
 }

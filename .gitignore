@@ -60,6 +60,7 @@ local.properties
 *.jks
 *.keystore
 secrets.properties
+keystore.properties
 *.key
 *.pem
 *.p12
