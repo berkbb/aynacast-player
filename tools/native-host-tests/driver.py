@@ -982,6 +982,22 @@ check(st == "RTSP/1.0 200 OK", f"and records ({st})")
 raw(c, "TEARDOWN rtsp://127.0.0.1/2 RTSP/1.0\r\nCSeq: 7\r\n")
 drain("EVT audioconfig")
 c.close()
+# The same Mac on a new connection proves its password again: the DACP-ID alone is not enough, and
+# a Digest answer seen on another connection cannot be replayed (each connection has its own nonce)
+c = connect()
+st, hdrs, _ = raw(c, announce_head.format(1, ""), sdp("AppleLossless"))
+nonce2 = hdrs.get("www-authenticate", "").split('nonce="')[-1].rstrip('"')
+check(st == "RTSP/1.0 401 Unauthorized" and len(nonce2) == 32 and nonce2 != nonce,
+      f"the same DACP-ID on a new connection is challenged with a new nonce ({st})")
+drain("EVT classicauth")
+st, _, _ = raw(c, announce_head.format(2, auth.format(nonce, "good")), sdp("AppleLossless"))
+ev = wait_event("EVT classicauth") or ""
+check(st == "RTSP/1.0 401 Unauthorized" and ev.endswith("response="),
+      f"an answer to another connection's nonce is not accepted ({st}, {ev})")
+st, _, _ = raw(c, announce_head.format(3, auth.format(nonce2, "good")), sdp("AppleLossless"))
+check(st == "RTSP/1.0 200 OK", f"the answer to this connection's nonce is ({st})")
+drain("EVT classicauth"); drain("EVT rsa")
+c.close()
 command("PIN OFF")
 
 # 17. stop() with live, idle connections (RTSP + NTP) must return promptly and cleanly

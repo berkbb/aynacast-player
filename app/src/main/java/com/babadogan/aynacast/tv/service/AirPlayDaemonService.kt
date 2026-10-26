@@ -35,6 +35,7 @@ import com.babadogan.aynacast.tv.engine.AudioPlaybackEngine
 import com.babadogan.aynacast.tv.engine.AvSync
 import com.babadogan.aynacast.tv.engine.VideoDecoderEngine
 import com.babadogan.aynacast.tv.model.AppLanguage
+import com.babadogan.aynacast.tv.pairing.ClassicDigest
 import com.babadogan.aynacast.tv.pairing.PinPairingManager
 import com.babadogan.aynacast.tv.session.AirPlaySessionManager
 import com.babadogan.aynacast.tv.pairing.ServerIdentityStore
@@ -87,6 +88,9 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         private const val START_RETRY_DELAY_MS = 5_000L
         private const val MAX_START_RETRIES = 5
         private const val MAX_ARTWORK_PX = 1024
+        // A paired Mac answers the classic AirPlay challenge at once with the password it saved;
+        // when no answer comes in this time it is asking its user, who needs a code on screen.
+        private const val CLASSIC_PASSWORD_WAIT_MS = 3_000L
 
         /** Removes the "tap to open mirroring" notification once the player is visible. */
         fun cancelStreamNotification(context: Context) = cancelScreenNotification(context, STREAM_NOTIFICATION_ID)
@@ -117,6 +121,7 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
     private val startRetryRunnable = Runnable { startAirPlayServer() }
     private val networkRefreshRunnable = Runnable { refreshNsdIfNetworkChanged() }
     private val discoveryRefreshRunnable = Runnable { refreshDiscovery() }
+    private val classicCodeRunnable = Runnable { if (!PinPairingManager.isPairing()) onPinStart() }
 
     private val language: AppLanguage
         get() = AppSettingsRepository.getInstance(this).settings.value.language
@@ -659,10 +664,18 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         senderId: String, username: String, realm: String, nonce: String,
         method: String, uri: String, response: String
     ): Boolean {
-        val allowed = PinPairingManager.checkClassicDigest(senderId, username, realm, nonce, method, uri, response)
-        // The Mac shows its password prompt now: put the code to type on screen.
-        if (!allowed && !PinPairingManager.isPairing()) onPinStart()
-        return allowed
+        val decision = PinPairingManager.checkClassicDigest(
+            senderId, ClassicDigest.Answer(username, realm, nonce, method, uri, response)
+        )
+        mainHandler.removeCallbacks(classicCodeRunnable)
+        when (decision) {
+            ClassicDigest.Decision.PAIRED_PASSWORD, ClassicDigest.Decision.CODE_ON_SCREEN -> return true
+            ClassicDigest.Decision.CHALLENGE -> mainHandler.postDelayed(classicCodeRunnable, CLASSIC_PASSWORD_WAIT_MS)
+            // The Mac shows its password prompt now: put the code to type on screen.
+            ClassicDigest.Decision.NEEDS_CODE, ClassicDigest.Decision.WRONG ->
+                if (!PinPairingManager.isPairing()) onPinStart()
+        }
+        return false
     }
 
     override fun onVideoCastPlay(url: String, startSeconds: Double) {

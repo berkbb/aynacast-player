@@ -85,8 +85,9 @@ public:
     using RsaCallback = std::function<bool(int mode, const std::vector<uint8_t>& in, std::vector<uint8_t>& out)>;
     void setRsaCallback(RsaCallback cb) { onRsa_ = std::move(cb); }
     // PIN for classic AirPlay senders, which cannot do pair-verify: HTTP Digest with the on-screen
-    // code as the password. Returns true when the sender may stream: it is remembered (senderId,
-    // its DACP-ID), or [response] matches the code shown. Implemented in Java (PinPairingManager).
+    // code as the password. Returns true when the sender may stream: [response] proves the code
+    // shown, or the code this sender (senderId, its DACP-ID) paired with; the DACP-ID alone proves
+    // nothing. Asked once per connection, with a fresh nonce. Implemented in Java (PinPairingManager).
     struct ClassicAuth {
         std::string senderId, username, realm, nonce, method, uri, response;
     };

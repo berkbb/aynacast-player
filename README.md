@@ -74,7 +74,7 @@ Built on a two-tier architecture:
 - **UxPlay-compatible protocol behaviour:** NTP timing with the sender, verified pair-verify signatures, `txtAirPlay` info replies, per-stream `TEARDOWN`, and an optional timestamp audio/video sync (UxPlay `-vsync`; off by default for the lowest latency, as UxPlay recommends for macOS mirroring and hardware decoding).
 - **Audio-only AirPlay:** Music streamed to the TV shows an Apple TV-like Now Playing screen (cover art, title, artist, progress); Back keeps it playing in the background.
 - **Video casting:** An app's AirPlay button (Safari, YouTube and most video apps) can send its video to the TV instead of mirroring the screen; it plays in a Media3/ExoPlayer player controlled from the iPhone or the TV remote. DRM-protected services (Netflix, Apple TV+, Disney+) are not supported by design.
-- **On-screen PIN (optional):** A 4-digit code can be required the first time a device connects; paired devices are remembered. A Mac using the "(Mac)" entry types the code into its password prompt.
+- **On-screen PIN (optional):** A 4-digit code can be required the first time a device connects; paired devices are remembered. A Mac using the "(Mac)" entry types the code into its password prompt, and that code stays its password.
 - **Auto-Open on Android 10+:** The app asks for the "Display over other apps" permission that Android 10+ requires for the player to open by itself; without it a toast over the current app shows the PIN code or says to open AynaCast TV.
 - **Refresh Visibility:** re-announces the receiver every minute while idle, for TVs whose Wi-Fi drops incoming multicast (otherwise a phone that rejoined Wi-Fi cannot find them).
 - **Hardware decoder first:** low-latency keys are only requested from decoders that support them, a failing hardware decoder is retried before the software fallback, and the player shows `HW` / `SW`.
@@ -132,8 +132,9 @@ This project includes verified unit tests ensuring zero regressions:
 - **`AirPlayAudioFormatTest`:** Validates AAC-ELD / AAC-LC AudioSpecificConfig bytes and AirPlay volume mapping.
 - **`H264SpsParserTest`:** Validates SPS resolution parsing (cropping, emulation-prevention bytes).
 - **`AvSyncTest`, `PinPairingServerTest`, `AirPlayFeaturesTest`, `DnsTxtRecordTest`:** A/V sync latency rules, SRP/GCM PIN pairing against independent vectors, advertised feature bits and TXT encoding.
+- **`ClassicDigestTest`:** The Mac's PIN (HTTP Digest): a paired Mac must prove its password, its DACP-ID alone is not enough, and an answer to another nonce is refused.
 - **`VideoCastSessionTest`:** Video casting state: a closing player cannot stop or report for the cast that replaced it, and sender seeks/rates sent before the player exists are kept.
-- **Native host tests (`tools/native-host-tests/run.sh`):** Drive the C++ AirPlay core over real sockets under AddressSanitizer/UBSan (154 checks: protocol, audio/video, video casting, PIN pairing, classic AirPlay (RSA / Digest PIN), session ownership, hostile input).
+- **Native host tests (`tools/native-host-tests/run.sh`):** Drive the C++ AirPlay core over real sockets under AddressSanitizer/UBSan (157 checks: protocol, audio/video, video casting, PIN pairing, classic AirPlay (RSA / Digest PIN), session ownership, hostile input).
 
 Run all tests via:
 ```bash
@@ -171,7 +172,7 @@ Reports are welcome: run [`LIVE_ADB_TESTS.md`](LIVE_ADB_TESTS.md) on your device
 ## ⚠️ Known Issues
 
 - **Two entries on the Mac:** the macOS Music app cannot use the main receiver (it only offers FairPlay 2 there), so the TV also appears as **"<TV name> (Mac)"**; pick that one in the Music app. iPhones list it as an extra speaker.
-- **Mac PIN:** a Mac types the on-screen code as a password and is then remembered by its `DACP-ID`; this is weaker than the iPhone's SRP pairing (another LAN host could reuse a seen ID).
+- **Mac PIN:** a Mac types the on-screen code as a password; that code stays its password (macOS saves it) and is checked again on every connection. This is weaker than the iPhone's SRP pairing: the password is a 4-digit code, so a host that can read the Mac's traffic could work it out. A Mac that did not save the password sees its prompt again, and the TV shows a new code after about 3 seconds. Macs paired before this check enter a code once more.
 - **Some TVs do not hear discovery queries** (Wi-Fi drops incoming multicast; seen on an Arçelik / MStar M7322, Android 11). Keep "Refresh Visibility" on: a phone that rejoined Wi-Fi then finds the TV within about a minute. Turning the TV's Wi-Fi off and on can also help.
 - **Safari videos while mirroring:** with screen mirroring on, iOS may end a Safari video cast after a few seconds and go back to mirroring; stop mirroring first and use the AirPlay button in the video.
 - **Audio latency:** clean audio needs ≈0.35 s of buffering on a Wi-Fi TV, so lips can trail slightly in mirroring; the optional timestamp sync mode delays the picture instead (it still uses the older audio path).

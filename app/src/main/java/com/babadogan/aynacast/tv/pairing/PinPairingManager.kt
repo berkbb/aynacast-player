@@ -11,7 +11,6 @@ import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.security.MessageDigest
 import java.security.SecureRandom
 
 /**
@@ -41,6 +40,8 @@ object PinPairingManager {
     private const val LOCKOUT_MS = 5 * 60_000L
     // Paired-device key of a classic AirPlay sender: this prefix + its DACP-ID (not an Ed25519 key).
     private const val CLASSIC_KEY_PREFIX = "classic-dacp:"
+    // Per classic sender (suffixed with its Base64 key): the code it paired with, its password from then on.
+    private const val KEY_CLASSIC_PASSWORD_PREFIX = "classic_password:"
 
     private val random = SecureRandom()
     private val handler by lazy { Handler(Looper.getMainLooper()) }
@@ -150,34 +151,32 @@ object PinPairingManager {
 
     /**
      * Classic AirPlay senders (the macOS Music app) cannot run the SRP exchange; they answer an HTTP
-     * Digest challenge with the code typed into their password prompt instead. A sender that once
-     * entered the code is remembered by [senderId] (its DACP-ID) and listed with the paired devices.
-     * Weaker than SRP pairing: the DACP-ID proves nothing, a LAN host could reuse a seen one.
+     * Digest challenge with the code typed into their password prompt instead (see [ClassicDigest]).
+     * A sender that entered the code is listed with the paired devices under [senderId] (its
+     * DACP-ID), and that code stays its password: later connections must prove it (the Mac saves
+     * it), since the DACP-ID alone proves nothing. Paired before passwords were kept: asked for a
+     * code once more.
      */
     @Synchronized
-    fun checkClassicDigest(
-        senderId: String, username: String, realm: String, nonce: String,
-        method: String, uri: String, response: String
-    ): Boolean {
+    fun checkClassicDigest(senderId: String, answer: ClassicDigest.Answer): ClassicDigest.Decision {
+        // Nothing is checked while locked, so passwords cannot be tried on meanwhile.
+        if (SystemClock.elapsedRealtime() < lockedUntilMs) return ClassicDigest.Decision.CHALLENGE
         val key = if (senderId.isNotEmpty()) (CLASSIC_KEY_PREFIX + senderId).toByteArray() else null
-        if (key != null && _pairedDevices.value.any { it.contentEquals(key) }) return true
-        val pin = _pinCode.value
-        if (response.isEmpty() || pin == null || server == null) return false
-        val ha1 = md5Hex("$username:$realm:$pin")
-        val ha2 = md5Hex("$method:$uri")
-        if (md5Hex("$ha1:$nonce:$ha2") != response.lowercase()) {
-            registerFailure()
-            return false
+        val code = _pinCode.value?.takeIf { server != null }
+        val decision = ClassicDigest.decide(key?.let { classicPassword(it) }, code, answer)
+        when (decision) {
+            ClassicDigest.Decision.PAIRED_PASSWORD -> consecutiveFailures = 0
+            ClassicDigest.Decision.CODE_ON_SCREEN -> {
+                consecutiveFailures = 0
+                if (key != null && code != null) rememberClassic(key, code)
+                endPairing(Outcome.PAIRED)
+                Log.i(TAG, "Classic AirPlay sender paired with PIN")
+            }
+            ClassicDigest.Decision.WRONG -> registerFailure()
+            ClassicDigest.Decision.CHALLENGE, ClassicDigest.Decision.NEEDS_CODE -> Unit
         }
-        consecutiveFailures = 0
-        if (key != null) remember(key)
-        endPairing(Outcome.PAIRED)
-        Log.i(TAG, "Classic AirPlay sender paired with PIN")
-        return true
+        return decision
     }
-
-    private fun md5Hex(text: String): String =
-        MessageDigest.getInstance("MD5").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 
     /** Hides the code (e.g. the sender gave up, or it expired). */
     @Synchronized
@@ -204,16 +203,21 @@ object PinPairingManager {
         _pinCode.value = null
     }
 
+    // Also called for a wrong password from a paired classic sender, when no code may be on screen.
     private fun registerFailure() {
         consecutiveFailures++
-        attemptsLeft--
-        Log.w(TAG, "Wrong PIN entered on the sender ($attemptsLeft attempts left for this code)")
+        if (server != null) {
+            attemptsLeft--
+            Log.w(TAG, "Wrong PIN entered on the sender ($attemptsLeft attempts left for this code)")
+        } else {
+            Log.w(TAG, "Wrong password from a paired classic AirPlay sender")
+        }
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
             consecutiveFailures = 0
             lockedUntilMs = SystemClock.elapsedRealtime() + LOCKOUT_MS
             Log.w(TAG, "Too many wrong codes; PIN pairing locked for ${LOCKOUT_MS / 1000} s")
             endPairing(Outcome.LOCKED)
-        } else if (attemptsLeft <= 0) {
+        } else if (server != null && attemptsLeft <= 0) {
             endPairing(Outcome.WRONG_CODE)
         }
     }
@@ -274,10 +278,22 @@ object PinPairingManager {
         refreshDetails()
     }
 
+    // A classic sender that paired again (e.g. its saved password was lost) gets the new code.
+    private fun rememberClassic(key: ByteArray, password: String) {
+        remember(key)
+        prefs?.edit { putString(KEY_CLASSIC_PASSWORD_PREFIX + encode(key), password) }
+    }
+
+    private fun classicPassword(key: ByteArray): String? {
+        if (_pairedDevices.value.none { it.contentEquals(key) }) return null
+        return prefs?.getString(KEY_CLASSIC_PASSWORD_PREFIX + encode(key), null)
+    }
+
     private fun SharedPreferences.Editor.removeDetails(encodedKey: String) {
         remove(KEY_NAME_PREFIX + encodedKey)
         remove(KEY_MODEL_PREFIX + encodedKey)
         remove(KEY_PAIRED_AT_PREFIX + encodedKey)
+        remove(KEY_CLASSIC_PASSWORD_PREFIX + encodedKey)
     }
 
     private fun refreshDetails() {
