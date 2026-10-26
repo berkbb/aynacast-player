@@ -864,6 +864,99 @@ check(ev == {"category": "video", "sessionID": 1, "state": "stopped"}, f"missing
 check(closed_by_peer(c) and closed_by_peer(rev), "the failed cast's connections are closed")
 c.close(); rev.close()
 
+
+def lan_address():
+    """This machine's non-loopback IPv4 address: connecting from it plays another LAN host."""
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))  # picks the outgoing interface; nothing is sent
+        ip = probe.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        probe.close()
+    return None if ip.startswith("127.") else ip
+
+
+def lan_connection(ip):
+    """A connection from that address, or None when the receiver does not answer there (a host
+    firewall can hold the freshly built harness's connections from addresses other than loopback)."""
+    try:
+        sock = socket.create_connection((ip, RTSP), timeout=2)
+        st = http(sock, "GET", "/server-info")[0]  # answered even with the PIN on
+    except OSError:
+        return None
+    if st != "HTTP/1.1 200 OK":
+        sock.close()
+        return None
+    sock.settimeout(5)
+    return sock
+
+
+# 15d. PIN on: video casting (HTTP) needs pair-verify, like SETUP and RECORD
+command("PIN ON")
+time.sleep(0.3)  # the casting connections closed above are gone
+drain("EVT cast")
+x = connect()
+st, _, _ = http(x, "POST", "/play", bplist({"Content-Location": "https://intruder.example/v.mp4", "uuid": "X1"}),
+                "application/x-apple-binary-plist")
+check(st == "HTTP/1.1 403 Forbidden" and closed_by_peer(x) and wait_event("EVT castplay", 0.3) is None,
+      f"PIN on: /play without pair-verify refused and the connection closed ({st})")
+x.close()
+for method, path in (("POST", "/stop"), ("POST", "/scrub?position=1.0"), ("POST", "/rate?value=0.000000"),
+                     ("GET", "/playback-info"), ("PUT", "/setProperty?forwardEndTime")):
+    x = connect()
+    st, _, _ = http(x, method, path)
+    check(st == "HTTP/1.1 403 Forbidden", f"PIN on: {method} {path} without pair-verify refused ({st})")
+    x.close()
+x = connect()
+x.sendall(f"POST /reverse HTTP/1.1\r\nUpgrade: PTTH/1.0\r\nConnection: Upgrade\r\nContent-Length: 0\r\n"
+          f"X-Apple-Session-ID: {SID}\r\n\r\n".encode())
+st, _, _ = recv_response(x)
+check(st == "HTTP/1.1 403 Forbidden", f"PIN on: /reverse without pair-verify refused ({st})")
+x.close()
+check(wait_event("EVT cast", 0.3) is None, "refused casting requests reach no player")
+x = connect()
+st, _, _ = http(x, "GET", "/server-info")
+check(st == "HTTP/1.1 200 OK", f"PIN on: GET /server-info still answered, like GET /info ({st})")
+st, _, _ = http(x, "GET", "/master.m3u8", sid=None, extra="Host: localhost:17000\r\n")
+check(st in ("HTTP/1.1 200 OK", "HTTP/1.1 404 Not Found"), f"PIN on: the local player's playlist request is not refused ({st})")
+x.close()
+
+# The paired sender casts from its pair-verified connection; its event connection (same address) is let in
+v = connect()
+server_ok, st, _ = pair_verify(v, 200, client_ed=paired_key)
+check(server_ok and st == "RTSP/1.0 200 OK", "PIN on: the paired sender completes pair-verify")
+rv = open_reverse()
+st, _, _ = http(v, "POST", "/play", bplist({"Content-Location": "https://media.example/paired.mp4", "uuid": "P1"}),
+                "application/x-apple-binary-plist")
+check(st == "HTTP/1.1 200 OK" and wait_event("EVT castplay") == "EVT castplay url=https://media.example/paired.mp4 start=0.00",
+      f"PIN on: the paired sender's verified connection may cast ({st})")
+command("CASTSTATE 2 60 1 5 1 1")
+head, ev = read_event(rv)
+check(ev is not None and ev.get("state") == "playing", f"PIN on: its event connection from the same address is let in ({ev})")
+lan = lan_address()
+x = lan_connection(lan) if lan else None
+if x:
+    st, _, _ = http(x, "POST", "/stop")
+    check(st == "HTTP/1.1 403 Forbidden" and wait_event("EVT caststop", 0.3) is None,
+          f"PIN on: another address cannot stop the paired sender's cast ({st})")
+    x.close()
+    x = lan_connection(lan)
+    st = http(x, "GET", "/master.m3u8", sid=None, extra="Host: localhost:17000\r\n")[0] if x else None
+    check(st == "HTTP/1.1 403 Forbidden", f"PIN on: the rewritten playlists are only served to the local player ({st})")
+    if x:
+        x.close()
+else:
+    print(f"SKIP no answer from a non-loopback address ({lan}): the other-address checks did not run")
+st, _, _ = http(v, "POST", "/stop")
+check(st == "HTTP/1.1 200 OK" and wait_event("EVT caststop") is not None, "PIN on: the paired sender stops its cast")
+command("CASTSTATE 0 0 0 0 0 0")
+v.close(); rv.close()
+time.sleep(0.3)
+drain("EVT cast")
+command("PIN OFF")
+
 # 16. Malformed / hostile plists do not crash
 s = connect()
 for i, junk in enumerate([b"bplist00" + os.urandom(64), b"bplist00" + b"\xd1" * 200 + b"\0" * 32, os.urandom(300)]):

@@ -74,7 +74,7 @@ Built on a two-tier architecture:
 - **UxPlay-compatible protocol behaviour:** NTP timing with the sender, verified pair-verify signatures, `txtAirPlay` info replies, per-stream `TEARDOWN`, and an optional timestamp audio/video sync (UxPlay `-vsync`; off by default for the lowest latency, as UxPlay recommends for macOS mirroring and hardware decoding).
 - **Audio-only AirPlay:** Music streamed to the TV shows an Apple TV-like Now Playing screen (cover art, title, artist, progress); Back keeps it playing in the background.
 - **Video casting:** An app's AirPlay button (Safari, YouTube and most video apps) can send its video to the TV instead of mirroring the screen; it plays in a Media3/ExoPlayer player controlled from the iPhone or the TV remote. DRM-protected services (Netflix, Apple TV+, Disney+) are not supported by design.
-- **On-screen PIN (optional):** A 4-digit code can be required the first time a device connects; paired devices are remembered. A Mac using the "(Mac)" entry types the code into its password prompt, and that code stays its password.
+- **On-screen PIN (optional):** A 4-digit code can be required the first time a device connects; paired devices are remembered. With the PIN on, mirroring, audio and video casting all require a paired device. A Mac using the "(Mac)" entry types the code into its password prompt, and that code stays its password.
 - **Auto-Open on Android 10+:** The app asks for the "Display over other apps" permission that Android 10+ requires for the player to open by itself; without it a toast over the current app shows the PIN code or says to open AynaCast TV.
 - **Refresh Visibility:** re-announces the receiver every minute while idle, for TVs whose Wi-Fi drops incoming multicast (otherwise a phone that rejoined Wi-Fi cannot find them).
 - **Hardware decoder first:** low-latency keys are only requested from decoders that support them, a failing hardware decoder is retried before the software fallback, and the player shows `HW` / `SW`.
@@ -134,7 +134,7 @@ This project includes verified unit tests ensuring zero regressions:
 - **`AvSyncTest`, `PinPairingServerTest`, `AirPlayFeaturesTest`, `DnsTxtRecordTest`:** A/V sync latency rules, SRP/GCM PIN pairing against independent vectors, advertised feature bits and TXT encoding.
 - **`ClassicDigestTest`:** The Mac's PIN (HTTP Digest): a paired Mac must prove its password, its DACP-ID alone is not enough, and an answer to another nonce is refused.
 - **`VideoCastSessionTest`:** Video casting state: a closing player cannot stop or report for the cast that replaced it, and sender seeks/rates sent before the player exists are kept.
-- **Native host tests (`tools/native-host-tests/run.sh`):** Drive the C++ AirPlay core over real sockets under AddressSanitizer/UBSan (157 checks: protocol, audio/video, video casting, PIN pairing, classic AirPlay (RSA / Digest PIN), session ownership, hostile input).
+- **Native host tests (`tools/native-host-tests/run.sh`):** Drive the C++ AirPlay core over real sockets under AddressSanitizer/UBSan (171 checks: protocol, audio/video, video casting and its PIN gate, PIN pairing, classic AirPlay (RSA / Digest PIN), session ownership, hostile input).
 
 Run all tests via:
 ```bash

@@ -4,7 +4,7 @@ This document is for verifying AynaCast TV end to end on a real Android TV with 
 (iPhone/iPad/Mac). Each test says what to do, what should appear on screen and which log lines
 should show up. Fill in the table at the bottom and send it back together with the `tv-logs/` folder.
 
-> The automated tests (157 local network checks, 54 unit tests) verify the protocol; this plan targets
+> The automated tests (171 local network checks, 54 unit tests) verify the protocol; this plan targets
 > only what can be seen on a real device (picture, sound, latency, Apple's real behaviour, TV hardware).
 
 UI labels below are the app's English ones (Settings → App Language → English); the Turkish UI uses
@@ -253,6 +253,8 @@ check `pw=true` with `dns-sd -L "<TV name>" _airplay._tcp local.`. `tvlog 08-pin
 | 8g | 9 wrong codes in a row from one device | "Too many wrong codes" card; no new code for 5 min. Log: `Too many wrong codes; PIN pairing locked for 300 s` |
 | 8h | While a video plays (Test 7a), a **second** device selects the TV | The code screen opens, the playing video **does not close** |
 | 8i | Mac Music through "(Mac)", paired before: stop and play again, then quit and reopen Music | No password prompt and no code (the Mac sends the password it saved). If the Mac shows its prompt, a new code appears on the TV within ~3 s |
+| 8j | A paired iPhone casts a video (Test 7a, then 7b) | Plays as with the PIN off. Log: no `without pair-verify; PIN pairing required` line |
+| 8k | From another computer: `curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'X-Apple-Session-ID: test' "http://$TV_IP:7000/play"` | Prints `403`, nothing opens on the TV. Log: `Video casting request POST /play ... without pair-verify` |
 
 Set PIN back to **"Off – No Code"** after the test (the default).
 
@@ -538,7 +540,7 @@ TV model / Android version: ……………… · iPhone model / iOS: ………�
 | 7a Safari / URL video | | |
 | 7b YouTube | | |
 | 7c DRM (expected: not supported) | | |
-| 8a–8i PIN pairing | | |
+| 8a–8k PIN pairing | | |
 | 9 Audio/video sync | | |
 | 10 Notification fallback | | |
 | 11 Boot + persistent identity | | |

@@ -840,11 +840,25 @@ void RaopRtspServer::handleClientConnection(int clientFd, const std::string& cli
 
     while (isRunning_.load() && readRtspRequest(clientFd, pending, req, shouldAbort)) {
         lastRequest = std::chrono::steady_clock::now();
+        bool isHttp = req.version.rfind("HTTP/", 0) == 0;
+        // Checked before the connection counts as casting, so a refused one is never tracked with
+        // the sender's casting connections.
+        if (isHttp && !castAllowed(req, clientIp, connectionId)) {
+            LOGW("Video casting request %s %s from connection #%" PRIu64 " (%s) without pair-verify; PIN pairing required",
+                 req.method.c_str(), req.uri.c_str(), connectionId, clientIp.c_str());
+            RtspResponse denied;
+            denied.protocol = "HTTP/1.1";
+            denied.statusCode = 403;
+            denied.statusMessage = "Forbidden";
+            std::string serialized = denied.serialize();
+            sendAll(clientFd, serialized.data(), serialized.size());
+            break;
+        }
         std::string appleSessionId;
         for (const auto& kv : req.headers) {
             if (toLower(kv.first) == "x-apple-session-id") appleSessionId = kv.second;
         }
-        if (!castConnection && !appleSessionId.empty() && req.version.rfind("HTTP/", 0) == 0) {
+        if (!castConnection && !appleSessionId.empty() && isHttp) {
             castConnection = true;
             std::lock_guard<std::mutex> lock(castMutex_);
             castFds_.insert(clientFd);
@@ -898,6 +912,7 @@ void RaopRtspServer::handleClientConnection(int clientFd, const std::string& cli
         std::lock_guard<std::mutex> lock(configMutex_);
         classicNonces_.erase(connectionId);
         classicAuthorized_.erase(connectionId);
+        castTrusted_.erase(connectionId);
     }
     LOGI("RTSP client connection #%" PRIu64 " closed for %s", connectionId, clientIp.c_str());
 }
@@ -911,6 +926,26 @@ bool RaopRtspServer::pinAllows(uint64_t connectionId) {
     if (!pinRequired || crypto_.isPairVerified(connectionId)) return true;
     std::lock_guard<std::mutex> lock(configMutex_);
     return classicAuthorized_.count(connectionId) > 0;
+}
+
+bool RaopRtspServer::castAllowed(const RtspRequest& req, const std::string& clientIp, uint64_t connectionId) {
+    std::string path = req.uri.substr(0, req.uri.find('?'));
+    bool verified = crypto_.isPairVerified(connectionId);
+    std::lock_guard<std::mutex> lock(configMutex_);
+    if (!pinRequired_) return true;
+    // Like GET /info: senders may look the receiver up before pairing.
+    if (req.method == "GET" && path == "/server-info") return true;
+    // The local player fetching the playlists rewritten to http://localhost (no session ID).
+    bool loopback = clientIp.rfind("127.", 0) == 0;
+    if (loopback && req.method == "GET" && headerValue(req, "x-apple-session-id").empty() &&
+        path.size() >= 5 && path.compare(path.size() - 5, 5, ".m3u8") == 0) {
+        return true;
+    }
+    bool trusted = verified || castTrusted_.count(connectionId) > 0 ||
+                   std::any_of(castTrusted_.begin(), castTrusted_.end(),
+                               [&clientIp](const auto& entry) { return entry.second == clientIp; });
+    if (trusted) castTrusted_[connectionId] = clientIp;
+    return trusted;
 }
 
 void RaopRtspServer::endSessionLocked(const char* reason) {
@@ -1457,6 +1492,9 @@ RtspResponse RaopRtspServer::processRtspRequest(const RtspRequest& req, const st
         }
         if (!crypto_.handlePairVerify(connectionId, req.body, resp.body)) {
             resp.closeConnection = true; // UxPlay: http_response_set_disconnect on a bad signature
+        } else if (crypto_.isPairVerified(connectionId)) {
+            std::lock_guard<std::mutex> lock(configMutex_);
+            castTrusted_[connectionId] = clientIp;
         }
         resp.headers["Content-Type"] = "application/octet-stream";
     } else if (req.method == "POST" && req.uri.find("/fp-setup") != std::string::npos) {

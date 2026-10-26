@@ -122,6 +122,7 @@ When an Apple client connects to TCP port 7000, the C++ engine processes:
 - Timing: after the session `SETUP` the receiver queries the sender's `timingPort` with NTP requests (every 250 ms for the first 8, then every 3 s) and maps sender timestamps (video header bytes 8–15, audio RTCP sync packets) onto the local `CLOCK_MONOTONIC`/`System.nanoTime()` timeline.
 - Video casting (HTTP/1.1 on port 7000, `video_cast.cpp`): `/server-info`, `/reverse` (PTTH event channel), `/play`, `/scrub`, `/rate`, `/stop`, `/playback-info`, `/setProperty`, `/action`. Direct URLs go to the player; YouTube `mlhls://localhost/master.m3u8` playlists are requested from the sender with FCUP events (replies are matched by `FCUP_Response_RequestID`; `FCUP_Response_StatusCode` is 0 on success and is not checked), rewritten to `http://localhost:7000/...` and served to Media3/ExoPlayer. A stop on the TV sends a `stopped` event and closes the casting connections.
 - PIN pairing (`/pair-pin-start`, `/pair-setup-pin`): SRP-6a (SHA-1, RFC 5054 2048-bit group, Apple's 40-byte session key) and AES-128-GCM key exchange in `PinPairingServer.kt`; in PIN mode pair-verify only admits remembered devices.
+- PIN gate for video casting: with the PIN on, an HTTP/1.1 request is handled only on a connection that completed pair-verify or was already let in, or from the address of such an open connection (a sender's `/reverse` event connection need not pair-verify); anything else gets `403 Forbidden` and the connection is closed. Exceptions: `GET /server-info` (like `GET /info`) and the local player's playlist requests (`GET *.m3u8` without `X-Apple-Session-ID` from `127.0.0.1`).
 - Now playing: `SET_PARAMETER` with `application/x-dmap-tagged` (title/artist/album), `image/jpeg|png` (cover art) and `progress:` feeds the Now Playing screen.
 - Audio RTP: packets are reordered in a 256-slot buffer; a gap triggers one retransmission request (`0x80 0xD5`) to the sender's control port, retransmissions (`0x56`) fill it, and a missing run is skipped after 60 ms so playback never stalls.
 - `POST /fp-setup`: Simulates FairPlay key derivation phase 1/2 (the phase-2 mode byte must be 0–3). Only FairPlay version 3 is implemented; the macOS Music app's version 2 is rejected (logged with its version byte).
@@ -171,12 +172,14 @@ Native AirPlay core (C++) regression tests run on the development machine with A
 They build the core for the host and drive it over real sockets like an Apple sender (split and pipelined
 RTSP requests, SETUP/TEARDOWN plists, AAC/ALAC audio routing, dropped connections, shutdown with live clients,
 session ownership and takeover, PIN gate, video casting / FCUP ordering, classic AirPlay RSA/SDP/Transport
-and its Digest PIN, hostile plists, connection limits):
+and its Digest PIN, the PIN gate for video casting, hostile plists, connection limits):
 ```bash
 ./tools/native-host-tests/run.sh
 ```
 Requires `clang`, `clang++` and a `python3` with the `cryptography` package (set `PYTHON=...` to pick
-one); uses TCP ports 17000/17100 and UDP 7011/7012.
+one); uses TCP ports 17000/17100 and UDP 7011/7012. The PIN-gate checks from another address connect
+through the machine's LAN IPv4 address; they print `SKIP` when nothing answers there (the macOS
+firewall holds the freshly built harness's non-loopback connections).
 
 To run static analysis and lint vital checks:
 ```bash

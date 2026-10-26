@@ -154,6 +154,8 @@ private:
     void endSessionLocked(const char* reason);
     // False when PIN pairing is on and this connection has not completed pair-verify.
     bool pinAllows(uint64_t connectionId);
+    // PIN on: whether an HTTP request (video casting) may be handled. See castTrusted_.
+    bool castAllowed(const RtspRequest& req, const std::string& clientIp, uint64_t connectionId);
 
     std::atomic<bool> isRunning_{false};
     std::atomic<bool> isStreaming_{false};
@@ -199,6 +201,10 @@ private:
     // Classic connections: Digest nonce sent to each, and those that passed the PIN check.
     std::map<uint64_t, std::string> classicNonces_;
     std::set<uint64_t> classicAuthorized_;
+    // PIN on: open connections (with their IP) that completed pair-verify or were let in to video
+    // casting. Casting requests are accepted on them and from their addresses, since a sender's
+    // other casting connections (e.g. its /reverse event connection) need not pair-verify.
+    std::map<uint64_t, std::string> castTrusted_;
     int displayWidth_{1920};
     int displayHeight_{1080};
     float displayRefreshRate_{50.0f};

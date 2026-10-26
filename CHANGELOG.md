@@ -11,9 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - **Mac PIN could be skipped with a known DACP-ID:** a classic AirPlay sender (the "(Mac)" entry) was let in without a password whenever its `DACP-ID` belonged to a paired Mac. That ID is a header the sender chooses, and Macs announce it on the network, so any LAN host could stream to the TV and take over a running session with the PIN on. The code a Mac paired with is now its password and is checked with HTTP Digest on every connection (fresh nonce per connection, so a seen answer cannot be replayed); a wrong password counts towards the PIN lockout. A paired Mac that does not answer the challenge within 3 s gets a new code on screen. Macs paired with an earlier version enter a code once more.
+- **Video casting ignored the PIN:** with the PIN on, any LAN host could `POST /play` a URL that the TV then played full screen, or stop, seek and pause the running cast. Video casting (HTTP/1.1) now requires a connection that completed pair-verify, or the address of one; anything else gets `403 Forbidden`. The local player's playlist requests are only served to `127.0.0.1` while the PIN is on.
 
 ### Tests
-- Native: 154 → 157 checks (classic Digest per connection and replay). Unit: `ClassicDigestTest`.
+- Native: 154 → 171 checks (PIN gate for every casting endpoint and `/reverse`, the paired sender and its event connection, another LAN address; classic Digest per connection and replay). Unit: `ClassicDigestTest`.
 
 ## [1.5.3] - 2026-10-19
 
