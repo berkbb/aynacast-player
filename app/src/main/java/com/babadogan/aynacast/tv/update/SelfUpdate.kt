@@ -19,14 +19,23 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-const val SELF_RELEASE_API_URL = "https://api.github.com/repos/berkbb/aynacast-player/releases/latest"
-const val SELF_RELEASES_PAGE = "github.com/berkbb/aynacast-player/releases"
+/** AynaCast's GitHub repository (owner/name); every GitHub URL below derives from it. */
+const val SELF_REPOSITORY = "berkbb/aynacast-player"
+const val SELF_RELEASE_API_URL = "https://api.github.com/repos/$SELF_REPOSITORY/releases/latest"
+const val SELF_RELEASES_PAGE = "github.com/$SELF_REPOSITORY/releases"
+/** An asset's API URL is only used as a download fallback when it is under this prefix. */
+const val SELF_RELEASE_ASSET_API_PREFIX = "https://api.github.com/repos/$SELF_REPOSITORY/releases/assets/"
 
-data class ReleaseApk(val name: String, val url: String, val size: Long, val sha256: String?)
+/**
+ * One release asset. [url] is the browser download URL; [apiUrl] is the asset's GitHub API URL
+ * (the `url` field), kept only when it belongs to [SELF_REPOSITORY], as the download fallback.
+ */
+data class ReleaseApk(val name: String, val url: String, val size: Long, val sha256: String?, val apiUrl: String? = null)
 
 /** Result of checking AynaCast's own GitHub releases. */
 sealed interface UpdateCheck {
@@ -87,6 +96,27 @@ object SelfUpdateLogic {
         return if (value.startsWith("sha256:") && hex.length == 64 && hex.all { it in "0123456789abcdef" }) hex else null
     }
 
+    /** The asset's API URL when it is an asset of [SELF_REPOSITORY] over https, else null. */
+    fun assetApiUrl(raw: String?): String? {
+        val value = raw?.trim() ?: return null
+        return if (value.startsWith(SELF_RELEASE_ASSET_API_PREFIX) && value.length > SELF_RELEASE_ASSET_API_PREFIX.length) value else null
+    }
+
+    /** The assets of a GitHub release JSON (`browser_download_url`, `size`, `digest`, API `url`). */
+    fun parseAssets(release: JSONObject): List<ReleaseApk> {
+        val assets = release.optJSONArray("assets") ?: return emptyList()
+        return (0 until assets.length()).map { i ->
+            val asset = assets.getJSONObject(i)
+            ReleaseApk(
+                name = asset.optString("name", ""),
+                url = asset.optString("browser_download_url", ""),
+                size = asset.optLong("size", 0L),
+                sha256 = parseSha256(if (asset.isNull("digest")) null else asset.optString("digest", "")),
+                apiUrl = assetApiUrl(if (asset.isNull("url")) null else asset.optString("url", ""))
+            )
+        }
+    }
+
     fun checkFor(tag: String, current: String, apk: ReleaseApk?): UpdateCheck {
         val latest = parseVersion(tag)
         if (latest.isEmpty()) return UpdateCheck.Unavailable
@@ -102,6 +132,7 @@ object SelfUpdateLogic {
 object SelfUpdater {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
+    private val downloader = ApkDownloader()
 
     private val _check = MutableStateFlow<UpdateCheck?>(null)
     /** Null until a check from About; set back to null when its window closes. */
@@ -148,7 +179,9 @@ object SelfUpdater {
         job = scope.launch {
             _install.value = UpdateInstall.Downloading(0)
             val target = File(app.cacheDir, apk.name)
-            val downloaded = runCatching { download(apk, target) }.getOrDefault(false)
+            val downloaded = runCatching {
+                downloader.download(apk, target) { percent -> _install.value = UpdateInstall.Downloading(percent) }
+            }.getOrDefault(false)
             if (!downloaded) {
                 _install.value = UpdateInstall.DownloadFailed
                 return@launch
@@ -181,19 +214,9 @@ object SelfUpdater {
             return when (connection.responseCode) {
                 HttpURLConnection.HTTP_OK -> {
                     val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                    val assets = json.optJSONArray("assets")
-                    val apks = (0 until (assets?.length() ?: 0)).map { i ->
-                        val asset = assets!!.getJSONObject(i)
-                        ReleaseApk(
-                            name = asset.optString("name", ""),
-                            url = asset.optString("browser_download_url", ""),
-                            size = asset.optLong("size", 0L),
-                            sha256 = SelfUpdateLogic.parseSha256(if (asset.isNull("digest")) null else asset.optString("digest", ""))
-                        )
-                    }
                     SelfUpdateLogic.checkFor(
                         json.optString("tag_name", ""), currentVersion,
-                        SelfUpdateLogic.selectApk(apks, Build.SUPPORTED_ABIS)
+                        SelfUpdateLogic.selectApk(SelfUpdateLogic.parseAssets(json), Build.SUPPORTED_ABIS)
                     )
                 }
                 HttpURLConnection.HTTP_NOT_FOUND -> UpdateCheck.Unavailable
@@ -201,48 +224,6 @@ object SelfUpdater {
             }
         } finally {
             connection.disconnect()
-        }
-    }
-
-    /** Streams into a .part file and keeps it only when its SHA-256 (or size) matches the release. */
-    private fun download(apk: ReleaseApk, target: File): Boolean {
-        val part = File(target.parentFile, target.name + ".part")
-        val connection = (URL(apk.url).openConnection() as HttpURLConnection).apply {
-            instanceFollowRedirects = true
-            connectTimeout = 15_000
-            readTimeout = 30_000
-        }
-        try {
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) return false
-            val total = connection.contentLengthLong.takeIf { it > 0 } ?: apk.size
-            val digest = MessageDigest.getInstance("SHA-256")
-            var done = 0L
-            var last = -1
-            connection.inputStream.use { input ->
-                part.outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        output.write(buffer, 0, read)
-                        digest.update(buffer, 0, read)
-                        done += read
-                        val percent = if (total > 0) ((done * 100) / total).toInt().coerceIn(0, 100) else 0
-                        if (percent != last) {
-                            last = percent
-                            _install.value = UpdateInstall.Downloading(percent)
-                        }
-                    }
-                }
-            }
-            val sha = digest.digest().joinToString("") { "%02x".format(it) }
-            val valid = if (apk.sha256 != null) sha == apk.sha256 else apk.size > 0 && done == apk.size
-            if (!valid) return false
-            target.delete()
-            return part.renameTo(target)
-        } finally {
-            connection.disconnect()
-            if (part.exists()) part.delete()
         }
     }
 
@@ -276,6 +257,86 @@ object SelfUpdater {
             false
         } finally {
             runCatching { session?.close() }
+        }
+    }
+}
+
+/**
+ * Streams a release APK into a .part file next to the target and keeps it only when its SHA-256
+ * (or size) matches the release. The first attempt uses the asset's browser download URL
+ * (`github.com/…/releases/download/…`). When that fails with an I/O error or a server error
+ * (HTTP 500 or more; a 404 is final) and the asset's GitHub API URL is known, the same asset is
+ * fetched once more from the API with `Accept: application/octet-stream` (GitHub redirects to the
+ * storage host, which HttpURLConnection follows). On 2026-11-08 GitHub's Frankfurt edge answered
+ * 504 for every release download for hours while api.github.com kept working.
+ *
+ * [open] is injectable for unit tests; the default opens the URL over the network.
+ */
+internal class ApkDownloader(
+    private val open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }
+) {
+    private enum class Attempt { Done, Failed, Retry }
+
+    /** [onProgress] gets the percent (0–100) whenever it changes; restarts at 0 on the fallback. */
+    fun download(apk: ReleaseApk, target: File, onProgress: (Int) -> Unit = {}): Boolean {
+        val part = File(target.parentFile, target.name + ".part")
+        try {
+            var attempt = fetch(apk.url, null, apk, part, onProgress)
+            if (attempt == Attempt.Retry && apk.apiUrl != null) {
+                attempt = fetch(apk.apiUrl, "application/octet-stream", apk, part, onProgress)
+            }
+            if (attempt != Attempt.Done) return false
+            target.delete()
+            return part.renameTo(target)
+        } finally {
+            if (part.exists()) part.delete()
+        }
+    }
+
+    private fun fetch(url: String, accept: String?, apk: ReleaseApk, part: File, onProgress: (Int) -> Unit): Attempt {
+        val connection = try {
+            open(URL(url)).apply {
+                instanceFollowRedirects = true
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                if (accept != null) setRequestProperty("Accept", accept)
+            }
+        } catch (e: IOException) {
+            return Attempt.Retry
+        }
+        try {
+            val status = connection.responseCode
+            if (status >= 500) return Attempt.Retry
+            if (status != HttpURLConnection.HTTP_OK) return Attempt.Failed
+            val total = connection.contentLengthLong.takeIf { it > 0 } ?: apk.size
+            val digest = MessageDigest.getInstance("SHA-256")
+            var done = 0L
+            var last = -1
+            connection.inputStream.use { input ->
+                // Opened without append: whatever a failed first attempt left in the .part file is truncated.
+                part.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        output.write(buffer, 0, read)
+                        digest.update(buffer, 0, read)
+                        done += read
+                        val percent = if (total > 0) ((done * 100) / total).toInt().coerceIn(0, 100) else 0
+                        if (percent != last) {
+                            last = percent
+                            onProgress(percent)
+                        }
+                    }
+                }
+            }
+            val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            val valid = if (apk.sha256 != null) sha == apk.sha256 else apk.size > 0 && done == apk.size
+            return if (valid) Attempt.Done else Attempt.Failed
+        } catch (e: IOException) {
+            return Attempt.Retry
+        } finally {
+            connection.disconnect()
         }
     }
 }

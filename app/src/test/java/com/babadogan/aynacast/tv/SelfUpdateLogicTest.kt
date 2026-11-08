@@ -1,8 +1,10 @@
 package com.babadogan.aynacast.tv
 
 import com.babadogan.aynacast.tv.update.ReleaseApk
+import com.babadogan.aynacast.tv.update.SELF_RELEASE_ASSET_API_PREFIX
 import com.babadogan.aynacast.tv.update.SelfUpdateLogic
 import com.babadogan.aynacast.tv.update.UpdateCheck
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -40,5 +42,40 @@ class SelfUpdateLogicTest {
         val hex = "b".repeat(64)
         assertEquals(hex, SelfUpdateLogic.parseSha256("sha256:$hex"))
         assertNull(SelfUpdateLogic.parseSha256("sha1:abc"))
+    }
+
+    @Test
+    fun parsesBothAssetUrlsFromTheReleaseJson() {
+        val hex = "c".repeat(64)
+        val json = JSONObject(
+            """{"tag_name":"v1.5.5","assets":[{"name":"AynaCastTV-v1.5.5-arm64-v8a-release.apk",
+            |"url":"${SELF_RELEASE_ASSET_API_PREFIX}123456","browser_download_url":"https://github.com/berkbb/aynacast-player/releases/download/v1.5.5/AynaCastTV-v1.5.5-arm64-v8a-release.apk",
+            |"size":13000000,"digest":"sha256:$hex"},{"name":"SHA256SUMS","browser_download_url":"https://github.com/berkbb/aynacast-player/releases/download/v1.5.5/SHA256SUMS","size":400,"digest":null}]}""".trimMargin()
+        )
+        val apks = SelfUpdateLogic.parseAssets(json)
+        assertEquals(
+            ReleaseApk(
+                "AynaCastTV-v1.5.5-arm64-v8a-release.apk",
+                "https://github.com/berkbb/aynacast-player/releases/download/v1.5.5/AynaCastTV-v1.5.5-arm64-v8a-release.apk",
+                13_000_000, hex, "${SELF_RELEASE_ASSET_API_PREFIX}123456"
+            ),
+            apks[0]
+        )
+        assertEquals(ReleaseApk("SHA256SUMS", "https://github.com/berkbb/aynacast-player/releases/download/v1.5.5/SHA256SUMS", 400, null, null), apks[1])
+        assertEquals(apks[0], SelfUpdateLogic.selectApk(apks, arrayOf("arm64-v8a")))
+    }
+
+    @Test
+    fun dropsAssetApiUrlsOfOtherRepositoriesAndHosts() {
+        assertEquals("${SELF_RELEASE_ASSET_API_PREFIX}1", SelfUpdateLogic.assetApiUrl("${SELF_RELEASE_ASSET_API_PREFIX}1"))
+        assertNull(SelfUpdateLogic.assetApiUrl("https://api.github.com/repos/berkbb/other-app/releases/assets/1"))
+        assertNull(SelfUpdateLogic.assetApiUrl("https://api.github.com/repos/berkbb/aynacast-player-fork/releases/assets/1"))
+        assertNull(SelfUpdateLogic.assetApiUrl("http://api.github.com/repos/berkbb/aynacast-player/releases/assets/1"))
+        assertNull(SelfUpdateLogic.assetApiUrl("https://api.example.com/repos/berkbb/aynacast-player/releases/assets/1"))
+        assertNull(SelfUpdateLogic.assetApiUrl(SELF_RELEASE_ASSET_API_PREFIX))
+        assertNull(SelfUpdateLogic.assetApiUrl(""))
+        assertNull(SelfUpdateLogic.assetApiUrl(null))
+        val foreign = JSONObject("""{"assets":[{"name":"a-universal-release.apk","url":"https://api.github.com/repos/someone/else/releases/assets/9","browser_download_url":"https://github.com/berkbb/aynacast-player/releases/download/v1/a-universal-release.apk","size":5}]}""")
+        assertNull(SelfUpdateLogic.parseAssets(foreign).single().apiUrl)
     }
 }
