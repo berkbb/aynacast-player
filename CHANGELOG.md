@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Update download when GitHub's release downloads are down:** "Update Now" no longer fails when `github.com/…/releases/download/…` answers with a server error or the connection drops: the APK is then fetched once more from the GitHub API asset URL that the release listing already named (accepted only under `api.github.com/repos/berkbb/aynacast-player/releases/assets/`, requested with `Accept: application/octet-stream`), with the same SHA-256 digest (or size) check on whichever download succeeded; a 404 still fails at once. On 2026-11-08 GitHub's Frankfurt edge answered 504 for every release download for hours while the API still worked. Unit: `SelfUpdateDownloadTest` (fallback after 5xx and I/O errors, no retry after 404, the digest check on the fallback, no leftover from the first attempt), `SelfUpdateLogicTest` (both asset URLs parsed, foreign API URLs dropped).
+
 ### Security
 - **Release signing off the debug keystore:** release builds were signed with `~/.android/debug.keystore`, whose password is public. Releases now use the TV apps' shared keystore `~/.signing/babadogan-tv-release.p12` (same certificate, so installed TVs keep updating) with a strong password kept in the macOS Keychain, or `keystore.properties` / `AYNACAST_*` variables; the debug key is only a fallback with a warning.
 
