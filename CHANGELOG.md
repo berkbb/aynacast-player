@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.6.0] - 2026-11-20
 
 ### Added
 - **System `MediaSession` integration (`AirPlayMediaSession`):** AirPlay music and URL video-cast sessions now publish metadata, cover art, progress and transport controls (`Play`/`Pause`/`Stop` + launch intent) to Android TV's system media session so launchers such as OtagHome display and control playback.
