@@ -23,6 +23,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.Locale
 
 /** AynaCast's GitHub repository (owner/name); every GitHub URL below derives from it. */
 const val SELF_REPOSITORY = "berkbb/aynacast-player"
@@ -61,6 +62,29 @@ sealed interface UpdateInstall {
     data class InstallFailed(val reason: String) : UpdateInstall
 }
 
+/** How often AynaCast quietly checks GitHub for a newer release when opened. */
+enum class UpdateCheckInterval(val millis: Long) {
+    OFF(0L),
+    DAILY(86_400_000L),
+    WEEKLY(7 * 86_400_000L);
+
+    companion object {
+        fun fromName(raw: String?): UpdateCheckInterval = entries.firstOrNull { it.name == raw } ?: OFF
+    }
+}
+
+/** Scheduling helpers for optional background update checks and one-time notices. */
+object UpdateSchedule {
+    fun shouldCheck(interval: UpdateCheckInterval, lastCheckedMs: Long, nowMs: Long): Boolean {
+        if (interval == UpdateCheckInterval.OFF) return false
+        if (lastCheckedMs <= 0L || nowMs < lastCheckedMs) return true
+        return nowMs - lastCheckedMs >= interval.millis
+    }
+
+    fun shouldNotify(latestVersion: String, lastNotifiedVersion: String?): Boolean =
+        latestVersion.isNotBlank() && latestVersion != lastNotifiedVersion
+}
+
 /** Pure parts of the check, unit-tested. */
 object SelfUpdateLogic {
 
@@ -91,7 +115,7 @@ object SelfUpdateLogic {
 
     /** "sha256:abc…" (GitHub's asset digest) as lowercase hex, or null. */
     fun parseSha256(digest: String?): String? {
-        val value = digest?.trim()?.lowercase() ?: return null
+        val value = digest?.trim()?.lowercase(Locale.ROOT) ?: return null
         val hex = value.removePrefix("sha256:")
         return if (value.startsWith("sha256:") && hex.length == 64 && hex.all { it in "0123456789abcdef" }) hex else null
     }
@@ -130,6 +154,10 @@ object SelfUpdateLogic {
  * (the TV asks for confirmation); the app reopens after the update.
  */
 object SelfUpdater {
+    private const val PREFS = "self_update"
+    private const val KEY_LAST_CHECKED_MS = "last_checked_ms"
+    private const val KEY_LAST_NOTIFIED_VERSION = "last_notified_version"
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
     private val downloader = ApkDownloader()
@@ -140,6 +168,57 @@ object SelfUpdater {
 
     private val _install = MutableStateFlow<UpdateInstall>(UpdateInstall.Idle)
     val install: StateFlow<UpdateInstall> = _install.asStateFlow()
+
+    private val _quietAvailable = MutableStateFlow<UpdateCheck.Available?>(null)
+    val quietAvailable: StateFlow<UpdateCheck.Available?> = _quietAvailable.asStateFlow()
+
+    fun cleanCachedApks(cacheDir: File) {
+        cacheDir.listFiles()?.forEach { file ->
+            if (file.isFile && (file.name.endsWith(".apk") || file.name.endsWith(".apk.part"))) {
+                file.delete()
+            }
+        }
+    }
+
+    fun cleanCache(context: Context) {
+        val dir = context.applicationContext.cacheDir
+        scope.launch { cleanCachedApks(dir) }
+    }
+
+    fun checkQuietlyIfDue(context: Context, currentVersion: String, interval: UpdateCheckInterval) {
+        if (currentVersion.isBlank() || interval == UpdateCheckInterval.OFF) return
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val lastChecked = prefs.getLong(KEY_LAST_CHECKED_MS, 0L)
+        if (!UpdateSchedule.shouldCheck(interval, lastChecked, now)) return
+        scope.launch {
+            val result = runCatching { fetch(currentVersion) }.getOrNull() ?: return@launch
+            if (result is UpdateCheck.UpToDate || result is UpdateCheck.Available) {
+                prefs.edit().putLong(KEY_LAST_CHECKED_MS, System.currentTimeMillis()).apply()
+            }
+            if (result is UpdateCheck.Available) {
+                val notified = prefs.getString(KEY_LAST_NOTIFIED_VERSION, null)
+                if (UpdateSchedule.shouldNotify(result.latest, notified)) {
+                    _quietAvailable.value = result
+                }
+            }
+        }
+    }
+
+    fun openQuietUpdate() {
+        val available = _quietAvailable.value ?: return
+        _quietAvailable.value = null
+        _install.value = UpdateInstall.Idle
+        _check.value = available
+    }
+
+    fun dismissQuietUpdate(context: Context) {
+        val available = _quietAvailable.value ?: return
+        _quietAvailable.value = null
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_LAST_NOTIFIED_VERSION, available.latest).apply()
+    }
 
     fun startCheck(currentVersion: String) {
         if (_check.value is UpdateCheck.Checking) return
@@ -330,7 +409,7 @@ internal class ApkDownloader(
                     }
                 }
             }
-            val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            val sha = digest.digest().joinToString("") { String.format(Locale.ROOT, "%02x", it) }
             val valid = if (apk.sha256 != null) sha == apk.sha256 else apk.size > 0 && done == apk.size
             return if (valid) Attempt.Done else Attempt.Failed
         } catch (e: IOException) {
@@ -369,6 +448,7 @@ class RestartAfterUpdateReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        SelfUpdater.cleanCachedApks(context.cacheDir)
         if (!prefs(context).getBoolean(KEY_PENDING, false)) return
         disarm(context)
         runCatching {

@@ -13,6 +13,7 @@ import com.babadogan.aynacast.tv.util.isTelevisionDevice
 private val DarkColorScheme = darkColorScheme(
     primary = AppleAccentBlue,
     secondary = AppleAccentGreen,
+    error = AppleAccentOrange,
     background = AppleDarkBackground,
     surface = AppleSurfaceDark,
     surfaceVariant = AppleSurfaceVariantDark,
@@ -26,6 +27,7 @@ private val DarkColorScheme = darkColorScheme(
 private val LightColorScheme = lightColorScheme(
     primary = AppleAccentBlue,
     secondary = AppleAccentGreen,
+    error = AppleWarningLight,
     background = AppleLightBackground,
     surface = AppleLightSurface,
     surfaceVariant = AppleLightSurfaceVariant,

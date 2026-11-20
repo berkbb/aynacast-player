@@ -3,13 +3,18 @@ package com.babadogan.aynacast.tv
 import com.babadogan.aynacast.tv.update.ReleaseApk
 import com.babadogan.aynacast.tv.update.SELF_RELEASE_ASSET_API_PREFIX
 import com.babadogan.aynacast.tv.update.SelfUpdateLogic
+import com.babadogan.aynacast.tv.update.SelfUpdater
 import com.babadogan.aynacast.tv.update.UpdateCheck
+import com.babadogan.aynacast.tv.update.UpdateCheckInterval
+import com.babadogan.aynacast.tv.update.UpdateSchedule
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class SelfUpdateLogicTest {
 
@@ -77,5 +82,36 @@ class SelfUpdateLogicTest {
         assertNull(SelfUpdateLogic.assetApiUrl(null))
         val foreign = JSONObject("""{"assets":[{"name":"a-universal-release.apk","url":"https://api.github.com/repos/someone/else/releases/assets/9","browser_download_url":"https://github.com/berkbb/aynacast-player/releases/download/v1/a-universal-release.apk","size":5}]}""")
         assertNull(SelfUpdateLogic.parseAssets(foreign).single().apiUrl)
+    }
+
+    @Test
+    fun respectsUpdateScheduleAndOneTimeNotification() {
+        val now = 1_700_000_000_000L
+        assertFalse(UpdateSchedule.shouldCheck(UpdateCheckInterval.OFF, 0L, now))
+        assertTrue(UpdateSchedule.shouldCheck(UpdateCheckInterval.DAILY, 0L, now))
+        assertFalse(UpdateSchedule.shouldCheck(UpdateCheckInterval.DAILY, now - 1_000L, now))
+        assertTrue(UpdateSchedule.shouldCheck(UpdateCheckInterval.DAILY, now - UpdateCheckInterval.DAILY.millis, now))
+        assertFalse(UpdateSchedule.shouldCheck(UpdateCheckInterval.WEEKLY, now - UpdateCheckInterval.DAILY.millis, now))
+        assertTrue(UpdateSchedule.shouldCheck(UpdateCheckInterval.WEEKLY, now - UpdateCheckInterval.WEEKLY.millis, now))
+
+        assertTrue(UpdateSchedule.shouldNotify("1.6.0", null))
+        assertFalse(UpdateSchedule.shouldNotify("1.6.0", "1.6.0"))
+        assertTrue(UpdateSchedule.shouldNotify("1.6.1", "1.6.0"))
+    }
+
+    @Test
+    fun cleansOnlyApkCacheFiles() {
+        val dir = createTempDirectory("aynacast-cache-test").toFile()
+        try {
+            val apk = File(dir, "AynaCastTV-v1.5.4-universal-release.apk").apply { writeText("x") }
+            val part = File(dir, "AynaCastTV-v1.5.4-universal-release.apk.part").apply { writeText("y") }
+            val keep = File(dir, "paired_devices.json").apply { writeText("z") }
+            SelfUpdater.cleanCachedApks(dir)
+            assertFalse(apk.exists())
+            assertFalse(part.exists())
+            assertTrue(keep.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 }

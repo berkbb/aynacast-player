@@ -17,5 +17,5 @@ object AirPlayFeatures {
     const val VALUE = 0x1E5A7FFFF7L
 
     /** mDNS TXT form: "<low 32 bits>,<high 32 bits>". */
-    fun txtValue(): String = "0x%X,0x%X".format(VALUE and 0xFFFFFFFFL, VALUE ushr 32)
+    fun txtValue(): String = String.format(java.util.Locale.ROOT, "0x%X,0x%X", VALUE and 0xFFFFFFFFL, VALUE ushr 32)
 }

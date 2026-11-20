@@ -39,6 +39,7 @@ import com.babadogan.aynacast.tv.pairing.ClassicDigest
 import com.babadogan.aynacast.tv.pairing.PinPairingManager
 import com.babadogan.aynacast.tv.session.AirPlaySessionManager
 import com.babadogan.aynacast.tv.pairing.ServerIdentityStore
+import com.babadogan.aynacast.tv.session.NowPlaying
 import com.babadogan.aynacast.tv.session.ScreenTransitions
 import com.babadogan.aynacast.tv.session.VideoCastSession
 import com.babadogan.aynacast.tv.settings.AppSettingsRepository
@@ -55,6 +56,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
@@ -81,6 +83,11 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         fun stopStreaming(context: Context) {
             context.startService(Intent(context, AirPlayDaemonService::class.java).setAction(ACTION_STOP_STREAMING))
         }
+
+        fun settingsActivityIntent(context: Context): Intent =
+            Intent(context, AirPlaySettingsActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
         private const val RTSP_PORT = 7000
         private const val NETWORK_REFRESH_DELAY_MS = 2_000L
         private const val DISCOVERY_REFRESH_MS = 60_000L
@@ -109,6 +116,15 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var nsdPublisher: NsdPublisher? = null
+    private var mediaSession: AirPlayMediaSession? = null
+
+    private data class AirPlayMediaInputs(
+        val isStreaming: Boolean,
+        val isVideoActive: Boolean,
+        val isAudioActive: Boolean,
+        val nowPlaying: NowPlaying,
+        val clientName: String
+    )
 
     private var serverStarted = false
     private var startRetries = 0
@@ -203,6 +219,37 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
                 createNotificationChannels()
                 getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildForegroundNotification())
             }
+            .launchIn(serviceScope)
+
+        mediaSession = AirPlayMediaSession(this)
+        val airPlayInputs = combine(
+            AirPlaySessionManager.isStreaming,
+            AirPlaySessionManager.isVideoActive,
+            AirPlaySessionManager.isAudioActive,
+            AirPlaySessionManager.nowPlaying,
+            AirPlaySessionManager.clientMetadata
+        ) { streaming, video, audio, np, client ->
+            AirPlayMediaInputs(streaming, video, audio, np, client.deviceName)
+        }
+        combine(
+            airPlayInputs,
+            VideoCastSession.media,
+            VideoCastSession.playback,
+            AppSettingsRepository.getInstance(this).settings.map { it.language }.distinctUntilChanged()
+        ) { ap, castMedia, castPlayback, lang ->
+            resolveMediaSessionSnapshot(
+                isStreaming = ap.isStreaming,
+                isVideoActive = ap.isVideoActive,
+                isAudioActive = ap.isAudioActive,
+                nowPlaying = ap.nowPlaying,
+                clientName = ap.clientName,
+                castMediaActive = castMedia != null,
+                castPlayback = castPlayback,
+                language = lang
+            ) to if (castMedia == null) ap.nowPlaying.artwork else null
+        }
+            .distinctUntilChanged()
+            .onEach { (snapshot, artwork) -> mediaSession?.update(snapshot, artwork) }
             .launchIn(serviceScope)
     }
 
@@ -867,6 +914,8 @@ class AirPlayDaemonService : Service(), AirPlayNativeBridge.AirPlayNativeListene
         // The native server is gone: nothing can complete a pairing or feed a cast anymore.
         PinPairingManager.cancelPairing()
         VideoCastSession.stop()
+        mediaSession?.release()
+        mediaSession = null
         AirPlaySessionManager.notifyServiceRunning(false)
         cancelStreamNotification(this)
         cancelScreenNotification(this, PIN_NOTIFICATION_ID)

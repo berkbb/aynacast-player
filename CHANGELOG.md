@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **System `MediaSession` integration (`AirPlayMediaSession`):** AirPlay music and URL video-cast sessions now publish metadata, cover art, progress and transport controls (`Play`/`Pause`/`Stop` + launch intent) to Android TV's system media session so launchers such as OtagHome display and control playback.
+- **TV storage info, scheduled update checks, `Menu` key & confirmed reset:** About now includes an internal TV storage card (`StatFs`), Settings offers optional automatic GitHub update checks (`Off` / `Daily` / `Weekly`, with a home-screen banner) plus a Cancel-first confirmed **Reset Settings** action, "Forget All" paired devices now asks for confirmation (Cancel-focused), and the remote's `Menu` key opens Settings from the home screen.
+
+### Changed
+- **Bounded marquee & theme-aware warning colour:** long titles on Now Playing and device names in Paired Devices scroll in a 2-pass `basicMarquee`; warning/error colours in Home and SelfUpdate now use `MaterialTheme.colorScheme.error` for Light-theme contrast.
+- **Cached update cleanup & `Locale.ROOT` hygiene:** stale `.apk` and `.apk.part` files in cache are cleaned automatically on startup and after an update; locale-independent formatting/casing uses `Locale.ROOT`.
+
 ### Fixed
 - **Update download when GitHub's release downloads are down:** "Update Now" no longer fails when `github.com/…/releases/download/…` answers with a server error or the connection drops: the APK is then fetched once more from the GitHub API asset URL that the release listing already named (accepted only under `api.github.com/repos/berkbb/aynacast-player/releases/assets/`, requested with `Accept: application/octet-stream`), with the same SHA-256 digest (or size) check on whichever download succeeded; a 404 still fails at once. On 2026-11-08 GitHub's Frankfurt edge answered 504 for every release download for hours while the API still worked. Unit: `SelfUpdateDownloadTest` (fallback after 5xx and I/O errors, no retry after 404, the digest check on the fallback, no leftover from the first attempt), `SelfUpdateLogicTest` (both asset URLs parsed, foreign API URLs dropped).
 

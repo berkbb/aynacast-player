@@ -3,6 +3,7 @@ package com.babadogan.aynacast.tv.ui
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +61,7 @@ fun PairedDevicesDialog(
     LaunchedEffect(devices.isEmpty()) {
         if (devices.isEmpty()) onDismiss()
     }
+    var confirmForgetAll by remember { mutableStateOf(false) }
     val locale = when (language) {
         AppLanguage.TR -> Locale("tr", "TR")
         AppLanguage.EN -> Locale.ENGLISH
@@ -98,7 +100,7 @@ fun PairedDevicesDialog(
             TvChoiceChip(
                 text = AirPlayStrings.pairedDevicesForgetAll(language),
                 isSelected = false,
-                onClick = onForgetAll
+                onClick = { confirmForgetAll = true }
             )
             TvChoiceChip(
                 text = AirPlayStrings.close(language),
@@ -106,6 +108,19 @@ fun PairedDevicesDialog(
                 onClick = onDismiss
             )
         }
+    }
+    if (confirmForgetAll) {
+        TvConfirmDialog(
+            title = AirPlayStrings.forgetAllConfirmTitle(language),
+            message = AirPlayStrings.forgetAllConfirmMessage(language),
+            confirmLabel = AirPlayStrings.pairedDevicesForgetAll(language),
+            cancelLabel = AirPlayStrings.cancel(language),
+            onConfirm = {
+                confirmForgetAll = false
+                onForgetAll()
+            },
+            onDismiss = { confirmForgetAll = false }
+        )
     }
 }
 
@@ -151,8 +166,9 @@ private fun PairedDeviceCard(
             fontSize = 17.sp,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.basicMarquee(iterations = 2)
         )
         if (since != null) {
             Text(

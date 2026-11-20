@@ -36,8 +36,6 @@ import com.babadogan.aynacast.tv.update.SelfUpdater
 import com.babadogan.aynacast.tv.update.UpdateCheck
 import com.babadogan.aynacast.tv.update.UpdateInstall
 
-private val WarningOrange = Color(0xFFFF9F0A)
-
 /**
  * Result of "Check for Updates" in About: up to date, no public release, GitHub unreachable, or a
  * newer version that can download and install itself ("Update Now"), with progress, the TV's
@@ -48,6 +46,7 @@ fun SelfUpdateWindow(check: UpdateCheck, install: UpdateInstall, language: AppLa
     val context = LocalContext.current
     val primaryFocus = remember { FocusRequester() }
     val canInstall = check is UpdateCheck.Available && check.apk != null
+    val warningColor = MaterialTheme.colorScheme.error
     val (title, message, color) = when (check) {
         is UpdateCheck.Checking -> Triple(AirPlayStrings.checkingUpdates(language), "", AppleAccentBlue)
         is UpdateCheck.UpToDate -> Triple(AirPlayStrings.updateUpToDateTitle(language), AirPlayStrings.updateUpToDate(check.current, language), AppleAccentGreen)
@@ -57,16 +56,16 @@ fun SelfUpdateWindow(check: UpdateCheck, install: UpdateInstall, language: AppLa
             else AirPlayStrings.updateAvailableManual(check.latest, check.current, SELF_RELEASES_PAGE, language),
             AppleAccentBlue
         )
-        is UpdateCheck.Unavailable -> Triple(AirPlayStrings.updateFailedTitle(language), AirPlayStrings.updateUnavailable(language), WarningOrange)
-        is UpdateCheck.Failed -> Triple(AirPlayStrings.updateFailedTitle(language), AirPlayStrings.updateOffline(language), WarningOrange)
+        is UpdateCheck.Unavailable -> Triple(AirPlayStrings.updateFailedTitle(language), AirPlayStrings.updateUnavailable(language), warningColor)
+        is UpdateCheck.Failed -> Triple(AirPlayStrings.updateFailedTitle(language), AirPlayStrings.updateOffline(language), warningColor)
     }
     val installLine: Pair<String, Color>? = when (install) {
         is UpdateInstall.Downloading -> AirPlayStrings.updateDownloading(install.percent, language) to MaterialTheme.colorScheme.onSurface
         is UpdateInstall.WaitingForConfirmation -> AirPlayStrings.updateConfirm(language) to AppleAccentGreen
-        is UpdateInstall.PermissionNeeded -> AirPlayStrings.updatePermission(language) to WarningOrange
-        is UpdateInstall.DownloadFailed -> AirPlayStrings.updateDownloadFailed(language) to WarningOrange
-        is UpdateInstall.SignatureConflict -> AirPlayStrings.updateSignatureConflict(language) to WarningOrange
-        is UpdateInstall.InstallFailed -> AirPlayStrings.updateInstallFailed(install.reason, language) to WarningOrange
+        is UpdateInstall.PermissionNeeded -> AirPlayStrings.updatePermission(language) to warningColor
+        is UpdateInstall.DownloadFailed -> AirPlayStrings.updateDownloadFailed(language) to warningColor
+        is UpdateInstall.SignatureConflict -> AirPlayStrings.updateSignatureConflict(language) to warningColor
+        is UpdateInstall.InstallFailed -> AirPlayStrings.updateInstallFailed(install.reason, language) to warningColor
         is UpdateInstall.Idle -> null
     }
     val busy = install is UpdateInstall.Downloading || install is UpdateInstall.WaitingForConfirmation

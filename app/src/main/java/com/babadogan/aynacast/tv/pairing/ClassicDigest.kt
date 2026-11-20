@@ -1,6 +1,7 @@
 package com.babadogan.aynacast.tv.pairing
 
 import java.security.MessageDigest
+import java.util.Locale
 
 /**
  * PIN check for classic AirPlay senders (the macOS Music app), which cannot run the SRP exchange:
@@ -51,8 +52,8 @@ object ClassicDigest {
     }
 
     private fun proves(password: String, answer: Answer): Boolean =
-        response(password, answer) == answer.response.lowercase()
+        response(password, answer) == answer.response.lowercase(Locale.ROOT)
 
     private fun md5Hex(text: String): String =
-        MessageDigest.getInstance("MD5").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+        MessageDigest.getInstance("MD5").digest(text.toByteArray()).joinToString("") { String.format(Locale.ROOT, "%02x", it) }
 }

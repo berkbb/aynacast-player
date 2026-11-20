@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -161,9 +162,10 @@ class NowPlayingActivity : ComponentActivity() {
                         color = MaterialTheme.colorScheme.onBackground,
                         fontSize = 38.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        lineHeight = 44.sp
+                        lineHeight = 44.sp,
+                        modifier = Modifier.basicMarquee(iterations = 2)
                     )
                     if (nowPlaying.artist.isNotBlank()) {
                         Spacer(modifier = Modifier.height(10.dp))
@@ -172,7 +174,8 @@ class NowPlayingActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.onBackground,
                             fontSize = 24.sp,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(iterations = 2)
                         )
                     }
                     if (nowPlaying.album.isNotBlank()) {
@@ -182,7 +185,8 @@ class NowPlayingActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 20.sp,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(iterations = 2)
                         )
                     }
                     if (nowPlaying.durationMs > 0L) {
@@ -226,6 +230,6 @@ class NowPlayingActivity : ComponentActivity() {
 
     private fun formatTime(ms: Long): String {
         val totalSeconds = (ms / 1000).coerceAtLeast(0)
-        return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+        return String.format(java.util.Locale.ROOT, "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 }

@@ -96,7 +96,7 @@ object PinPairingManager {
             Log.w(TAG, "PIN pairing refused: too many wrong codes, locked for a while")
             return null
         }
-        val pin = "%04d".format(random.nextInt(9999) + 1)
+        val pin = String.format(java.util.Locale.ROOT, "%04d", random.nextInt(9999) + 1)
         server = PinPairingServer(pin)
         attemptsLeft = MAX_ATTEMPTS_PER_PIN
         expiresAtMs = SystemClock.elapsedRealtime() + PIN_LIFETIME_MS

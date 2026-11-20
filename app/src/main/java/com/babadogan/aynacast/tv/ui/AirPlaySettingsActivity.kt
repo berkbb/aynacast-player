@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import com.babadogan.aynacast.tv.update.SelfUpdater
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,18 +26,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -80,12 +88,16 @@ import com.babadogan.aynacast.tv.ui.localization.AirPlayStrings
 import com.babadogan.aynacast.tv.ui.theme.AirPlayTvTheme
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentBlue
 import com.babadogan.aynacast.tv.ui.theme.AppleAccentGreen
-import com.babadogan.aynacast.tv.ui.theme.AppleAccentOrange
 import com.babadogan.aynacast.tv.ui.theme.AppleDarkBackground
 import com.babadogan.aynacast.tv.ui.theme.FocusFill
+import com.babadogan.aynacast.tv.update.UpdateCheck
+import com.babadogan.aynacast.tv.update.UpdateCheckInterval
 import com.babadogan.aynacast.tv.util.DeviceIdentityHelper
+import com.babadogan.aynacast.tv.util.StorageFormat
+import com.babadogan.aynacast.tv.util.readDeviceStorage
 import com.babadogan.aynacast.tv.util.requestNotificationPermissionOnce
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.Locale
 
 class AirPlaySettingsActivity : ComponentActivity() {
 
@@ -106,6 +118,8 @@ class AirPlaySettingsActivity : ComponentActivity() {
         val deviceName = DeviceIdentityHelper.getAirPlayDeviceName(this)
         val appVersion = readAppVersion()
         PinPairingManager.init(this)
+        SelfUpdater.cleanCache(this)
+        SelfUpdater.checkQuietlyIfDue(this, appVersion, settingsRepo.settings.value.updateCheckInterval)
 
         setContent {
             val appSettings by settingsRepo.settings.collectAsState()
@@ -118,6 +132,9 @@ class AirPlaySettingsActivity : ComponentActivity() {
             val nowPlaying by AirPlaySessionManager.nowPlaying.collectAsState()
             val isAudioActive by AirPlaySessionManager.isAudioActive.collectAsState()
             val castMedia by VideoCastSession.media.collectAsState()
+            val updateCheck by SelfUpdater.check.collectAsState()
+            val updateInstall by SelfUpdater.install.collectAsState()
+            val quietUpdate by SelfUpdater.quietAvailable.collectAsState()
             var showPairedDevices by remember { mutableStateOf(false) }
             var showSettings by rememberSaveable { mutableStateOf(false) }
             var showAbout by rememberSaveable { mutableStateOf(false) }
@@ -127,7 +144,24 @@ class AirPlaySettingsActivity : ComponentActivity() {
             var overlayPromptDone by rememberSaveable { mutableStateOf(false) }
 
             AirPlayTvTheme(themeMode = appSettings.themeMode) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown &&
+                                event.key == Key.Menu &&
+                                !showSettings &&
+                                !showAbout &&
+                                !showPairedDevices &&
+                                updateCheck == null
+                            ) {
+                                showSettings = true
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                ) {
                     AirPlaySettingsMainScreen(
                         nowPlaying = if (isStreaming && !isVideoActive && nowPlaying.hasContent) nowPlaying else null,
                         onShowNowPlaying = { startActivity(NowPlayingActivity.createIntent(this@AirPlaySettingsActivity)) },
@@ -154,6 +188,9 @@ class AirPlaySettingsActivity : ComponentActivity() {
                         currentLanguage = appSettings.language,
                         showOverlayPermission = !canDrawOverlays,
                         overlaySettingsUnavailable = overlayUnavailable,
+                        quietUpdate = quietUpdate,
+                        onOpenQuietUpdate = { SelfUpdater.openQuietUpdate() },
+                        onDismissQuietUpdate = { SelfUpdater.dismissQuietUpdate(this@AirPlaySettingsActivity) },
                         onShowMirroring = { startActivity(AirPlayPlayerActivity.createIntent(this@AirPlaySettingsActivity)) },
                         onGrantOverlayPermission = {
                             overlaySettingsUnavailable.value = !openOverlayPermissionSettings()
@@ -190,6 +227,16 @@ class AirPlaySettingsActivity : ComponentActivity() {
                                 avSyncEnabled = appSettings.avSyncEnabled,
                                 pinRequired = appSettings.pinRequired,
                                 pairedDeviceCount = pairedDevices.size,
+                                updateCheckInterval = appSettings.updateCheckInterval,
+                                onUpdateCheckIntervalChanged = { settingsRepo.setUpdateCheckInterval(it) },
+                                onResetSettings = {
+                                    settingsRepo.resetToDefaults()
+                                    if (settingsRepo.settings.value.receiverEnabled) {
+                                        ContextCompat.startForegroundService(this@AirPlaySettingsActivity, serviceIntent)
+                                    } else {
+                                        stopService(serviceIntent)
+                                    }
+                                },
                                 onLanguageChanged = { settingsRepo.setLanguage(it) },
                                 onThemeChanged = { settingsRepo.setThemeMode(it) },
                                 onAvSyncChanged = { settingsRepo.setAvSyncEnabled(it) },
@@ -225,8 +272,6 @@ class AirPlaySettingsActivity : ComponentActivity() {
                             )
                         }
                     }
-                    val updateCheck by SelfUpdater.check.collectAsState()
-                    val updateInstall by SelfUpdater.install.collectAsState()
                     updateCheck?.let { check ->
                         SelfUpdateWindow(
                             check = check,
@@ -330,6 +375,9 @@ fun AirPlaySettingsMainScreen(
     currentLanguage: AppLanguage,
     showOverlayPermission: Boolean,
     overlaySettingsUnavailable: Boolean,
+    quietUpdate: UpdateCheck.Available?,
+    onOpenQuietUpdate: () -> Unit,
+    onDismissQuietUpdate: () -> Unit,
     onShowMirroring: () -> Unit,
     onGrantOverlayPermission: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -417,6 +465,9 @@ fun AirPlaySettingsMainScreen(
                 currentLanguage = currentLanguage,
                 showOverlayPermission = showOverlayPermission,
                 overlaySettingsUnavailable = overlaySettingsUnavailable,
+                quietUpdate = quietUpdate,
+                onOpenQuietUpdate = onOpenQuietUpdate,
+                onDismissQuietUpdate = onDismissQuietUpdate,
                 onShowMirroring = onShowMirroring,
                 onGrantOverlayPermission = onGrantOverlayPermission
             )
@@ -443,6 +494,9 @@ fun HomeContent(
     currentLanguage: AppLanguage,
     showOverlayPermission: Boolean,
     overlaySettingsUnavailable: Boolean,
+    quietUpdate: UpdateCheck.Available?,
+    onOpenQuietUpdate: () -> Unit,
+    onDismissQuietUpdate: () -> Unit,
     onShowMirroring: () -> Unit,
     onGrantOverlayPermission: () -> Unit
 ) {
@@ -452,6 +506,41 @@ fun HomeContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        if (quietUpdate != null) {
+            TvCard(
+                modifier = Modifier.fillMaxWidth(),
+                borderColor = AppleAccentBlue.copy(alpha = 0.6f),
+                focusable = false
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = AirPlayStrings.autoUpdateBanner(quietUpdate.latest, currentLanguage),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TvChoiceChip(
+                            text = AirPlayStrings.updateNow(currentLanguage),
+                            isSelected = true,
+                            onClick = onOpenQuietUpdate
+                        )
+                        TvChoiceChip(
+                            text = AirPlayStrings.updateLater(currentLanguage),
+                            isSelected = false,
+                            onClick = onDismissQuietUpdate
+                        )
+                    }
+                }
+            }
+        }
+
         // Info cards, as on the Pitwall Updater home screen
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -468,9 +557,9 @@ fun HomeContent(
                 modifier = Modifier.weight(1f)
             )
             val statusColor = when {
-                !receiverEnabled -> AppleAccentOrange
+                !receiverEnabled -> MaterialTheme.colorScheme.error
                 isServiceRunning -> AppleAccentGreen
-                else -> AppleAccentOrange
+                else -> MaterialTheme.colorScheme.error
             }
             InfoCard(
                 title = AirPlayStrings.cardStatus(currentLanguage),
@@ -572,7 +661,7 @@ fun HomeContent(
         if (showOverlayPermission) {
             TvCard(
                 modifier = Modifier.fillMaxWidth(),
-                borderColor = AppleAccentOrange.copy(alpha = 0.6f),
+                borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
                 focusable = false
             ) {
                 CardLabel(AirPlayStrings.overlayPermissionTitle(currentLanguage))
@@ -607,6 +696,9 @@ fun SettingsContent(
     avSyncEnabled: Boolean,
     pinRequired: Boolean,
     pairedDeviceCount: Int,
+    updateCheckInterval: UpdateCheckInterval,
+    onUpdateCheckIntervalChanged: (UpdateCheckInterval) -> Unit,
+    onResetSettings: () -> Unit,
     onLanguageChanged: (AppLanguage) -> Unit,
     onThemeChanged: (AppThemeMode) -> Unit,
     onAvSyncChanged: (Boolean) -> Unit,
@@ -614,6 +706,7 @@ fun SettingsContent(
     onManagePairedDevices: () -> Unit,
     onKeepAliveChanged: (Boolean) -> Unit
 ) {
+    var confirmReset by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -822,7 +915,81 @@ fun SettingsContent(
             )
         }
 
+        // Automatic Update Check Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                CardLabel(AirPlayStrings.autoUpdateTitle(currentLanguage))
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = AirPlayStrings.autoUpdateDesc(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TvChoiceChip(
+                        text = AirPlayStrings.autoUpdateOff(currentLanguage),
+                        isSelected = updateCheckInterval == UpdateCheckInterval.OFF,
+                        onClick = { onUpdateCheckIntervalChanged(UpdateCheckInterval.OFF) }
+                    )
+                    TvChoiceChip(
+                        text = AirPlayStrings.autoUpdateDaily(currentLanguage),
+                        isSelected = updateCheckInterval == UpdateCheckInterval.DAILY,
+                        onClick = { onUpdateCheckIntervalChanged(UpdateCheckInterval.DAILY) }
+                    )
+                    TvChoiceChip(
+                        text = AirPlayStrings.autoUpdateWeekly(currentLanguage),
+                        isSelected = updateCheckInterval == UpdateCheckInterval.WEEKLY,
+                        onClick = { onUpdateCheckIntervalChanged(UpdateCheckInterval.WEEKLY) }
+                    )
+                }
+            }
+        }
+
+        // Reset Settings Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                CardLabel(AirPlayStrings.resetSettingsTitle(currentLanguage))
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = AirPlayStrings.resetSettingsDesc(currentLanguage),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                TvChoiceChip(
+                    text = AirPlayStrings.resetSettingsTitle(currentLanguage),
+                    isSelected = false,
+                    onClick = { confirmReset = true }
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(12.dp))
+    }
+
+    if (confirmReset) {
+        TvConfirmDialog(
+            title = AirPlayStrings.resetSettingsConfirmTitle(currentLanguage),
+            message = AirPlayStrings.resetSettingsConfirmMessage(currentLanguage),
+            confirmLabel = AirPlayStrings.confirm(currentLanguage),
+            cancelLabel = AirPlayStrings.cancel(currentLanguage),
+            onConfirm = {
+                confirmReset = false
+                onResetSettings()
+            },
+            onDismiss = { confirmReset = false }
+        )
     }
 }
 
@@ -833,6 +1000,12 @@ fun AboutContent(
     appVersion: String
 ) {
     val scrollState = rememberScrollState()
+    val storage = remember { readDeviceStorage() }
+    val storageLocale = when (currentLanguage) {
+        AppLanguage.TR -> Locale.forLanguageTag("tr-TR")
+        AppLanguage.EN -> Locale.ENGLISH
+        AppLanguage.RO -> Locale.forLanguageTag("ro-RO")
+    }
 
     Column(
         modifier = modifier
@@ -926,6 +1099,24 @@ fun AboutContent(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
+        }
+
+        if (storage != null) {
+            TvCard {
+                CardLabel(AirPlayStrings.aboutStorageTitle(currentLanguage))
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = AirPlayStrings.aboutStorageValue(
+                        StorageFormat.formatBytes(storage.freeBytes, storageLocale),
+                        StorageFormat.formatBytes(storage.totalBytes, storageLocale),
+                        StorageFormat.usedPercent(storage.freeBytes, storage.totalBytes),
+                        currentLanguage
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
 
         // License Card
@@ -1185,5 +1376,74 @@ fun TvNavButton(
 fun TvChoiceChip(
     text: String,
     isSelected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
-) = PitwallButton(text = text, isSelected = isSelected, height = 44.dp, fontSize = 14.sp, onClick = onClick)
+) = PitwallButton(text = text, isSelected = isSelected, height = 44.dp, fontSize = 14.sp, modifier = modifier, onClick = onClick)
+
+/**
+ * Confirmation modal with Cancel focused initially so an accidental D-pad press never triggers a
+ * destructive action.
+ */
+@Composable
+fun TvConfirmDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    cancelLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val cancelFocus = remember { FocusRequester() }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.65f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)), RoundedCornerShape(16.dp))
+                    .padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    TvNavButton(
+                        text = cancelLabel,
+                        isSelected = false,
+                        modifier = Modifier.focusRequester(cancelFocus),
+                        onClick = onDismiss
+                    )
+                    TvNavButton(
+                        text = confirmLabel,
+                        isSelected = true,
+                        onClick = onConfirm
+                    )
+                }
+            }
+        }
+    }
+}

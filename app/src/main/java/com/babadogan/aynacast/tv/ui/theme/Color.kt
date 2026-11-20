@@ -9,6 +9,7 @@ val AppleSurfaceVariantDark = Color(0xFF272B34)
 val AppleAccentBlue = Color(0xFF0A84FF)
 val AppleAccentGreen = Color(0xFF30D158)
 val AppleAccentOrange = Color(0xFFFF9F0A)
+val AppleWarningLight = Color(0xFFC45500)
 val AppleTextPrimary = Color(0xFFF5F5F7)
 val AppleTextSecondary = Color(0xFF949498)
 // Focused buttons fill with this and switch to dark text, as in Pitwall Updater

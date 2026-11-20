@@ -3,6 +3,7 @@ package com.babadogan.aynacast.tv
 import com.babadogan.aynacast.tv.model.AppLanguage
 import com.babadogan.aynacast.tv.model.AppThemeMode
 import com.babadogan.aynacast.tv.settings.AppSettings
+import com.babadogan.aynacast.tv.update.UpdateCheckInterval
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -66,5 +67,15 @@ class AppSettingsTest {
         assertEquals(true, AppSettings.DEFAULT_DISCOVERY_REFRESH)
         assertEquals(true, AppSettings().discoveryRefresh)
         assertEquals(false, AppSettings().copy(discoveryRefresh = false).discoveryRefresh)
+    }
+
+    @Test
+    fun testUpdateCheckIntervalDefaultsToOffAndParsesSafely() {
+        assertEquals(UpdateCheckInterval.OFF, AppSettings.DEFAULT_UPDATE_CHECK_INTERVAL)
+        assertEquals(UpdateCheckInterval.OFF, AppSettings().updateCheckInterval)
+        assertEquals(UpdateCheckInterval.DAILY, UpdateCheckInterval.fromName("DAILY"))
+        assertEquals(UpdateCheckInterval.WEEKLY, UpdateCheckInterval.fromName("WEEKLY"))
+        assertEquals(UpdateCheckInterval.OFF, UpdateCheckInterval.fromName("invalid"))
+        assertEquals(UpdateCheckInterval.OFF, UpdateCheckInterval.fromName(null))
     }
 }

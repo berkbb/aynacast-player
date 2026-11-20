@@ -543,7 +543,7 @@ object VideoDecoderEngine {
                     val fps = (frameCount * 1000L / elapsed).toInt()
                     val bitrateMbps = bytesDecoded * 8f / (elapsed * 1000f)
                     AirPlaySessionManager.updateMetrics(fps, bitrateMbps)
-                    Log.i(TAG, "Rendering video successfully at $fps fps, %.2f Mbps (decoder=${codec.name}, res=${streamWidth}x${streamHeight})".format(bitrateMbps))
+                    Log.i(TAG, String.format(java.util.Locale.ROOT, "Rendering video successfully at $fps fps, %.2f Mbps (decoder=${codec.name}, res=${streamWidth}x${streamHeight})", bitrateMbps))
                     frameCount = 0
                     bytesDecoded = 0
                     lastFpsCalculationTime = now

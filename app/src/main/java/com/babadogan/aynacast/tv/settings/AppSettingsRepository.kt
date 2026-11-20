@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.babadogan.aynacast.tv.model.AppLanguage
 import com.babadogan.aynacast.tv.model.AppThemeMode
+import com.babadogan.aynacast.tv.update.UpdateCheckInterval
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,7 +19,8 @@ data class AppSettings(
     /** Kill switch: false keeps the receiver off (not advertised, no connections) until turned on again. */
     val receiverEnabled: Boolean = DEFAULT_RECEIVER_ENABLED,
     /** Re-announce over mDNS every minute while idle, for TVs whose Wi-Fi drops incoming multicast. */
-    val discoveryRefresh: Boolean = DEFAULT_DISCOVERY_REFRESH
+    val discoveryRefresh: Boolean = DEFAULT_DISCOVERY_REFRESH,
+    val updateCheckInterval: UpdateCheckInterval = DEFAULT_UPDATE_CHECK_INTERVAL
 ) {
     companion object {
         const val DEFAULT_KEEP_ALIVE = true
@@ -29,6 +31,7 @@ data class AppSettings(
         const val DEFAULT_RECEIVER_ENABLED = true
         // Harmless on other TVs (a 1 s flicker in an open device list at worst); vital on those.
         const val DEFAULT_DISCOVERY_REFRESH = true
+        val DEFAULT_UPDATE_CHECK_INTERVAL = UpdateCheckInterval.OFF
     }
 }
 
@@ -43,6 +46,7 @@ class AppSettingsRepository(private val context: Context) {
         private const val KEY_PIN_REQUIRED = "app_pin_required"
         private const val KEY_RECEIVER_ENABLED = "app_receiver_enabled"
         private const val KEY_DISCOVERY_REFRESH = "app_discovery_refresh"
+        private const val KEY_UPDATE_CHECK_INTERVAL = "app_update_check_interval"
 
         @Volatile
         private var instance: AppSettingsRepository? = null
@@ -73,7 +77,8 @@ class AppSettingsRepository(private val context: Context) {
             avSyncEnabled = avSync,
             pinRequired = pinRequired,
             receiverEnabled = prefs.getBoolean(KEY_RECEIVER_ENABLED, AppSettings.DEFAULT_RECEIVER_ENABLED),
-            discoveryRefresh = prefs.getBoolean(KEY_DISCOVERY_REFRESH, AppSettings.DEFAULT_DISCOVERY_REFRESH)
+            discoveryRefresh = prefs.getBoolean(KEY_DISCOVERY_REFRESH, AppSettings.DEFAULT_DISCOVERY_REFRESH),
+            updateCheckInterval = UpdateCheckInterval.fromName(prefs.getString(KEY_UPDATE_CHECK_INTERVAL, null))
         )
     }
 
@@ -110,5 +115,16 @@ class AppSettingsRepository(private val context: Context) {
     fun setAvSyncEnabled(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_AV_SYNC, enabled) }
         _settings.value = _settings.value.copy(avSyncEnabled = enabled)
+    }
+
+    fun setUpdateCheckInterval(interval: UpdateCheckInterval) {
+        prefs.edit { putString(KEY_UPDATE_CHECK_INTERVAL, interval.name) }
+        _settings.value = _settings.value.copy(updateCheckInterval = interval)
+    }
+
+    /** Restores preferences to defaults; leaves paired devices and server identity untouched. */
+    fun resetToDefaults() {
+        prefs.edit { clear() }
+        _settings.value = AppSettings()
     }
 }

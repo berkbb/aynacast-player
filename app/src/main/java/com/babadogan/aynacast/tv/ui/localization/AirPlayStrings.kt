@@ -826,4 +826,100 @@ object AirPlayStrings {
         AppLanguage.EN -> "The system installer did not install the update. $reason"
         AppLanguage.RO -> "Programul de instalare al sistemului nu a instalat actualizarea. $reason"
     }
+
+    fun autoUpdateTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Otomatik Güncelleme Denetimi"
+        AppLanguage.EN -> "Automatic Update Check"
+        AppLanguage.RO -> "Verificare automată a actualizărilor"
+    }
+
+    fun autoUpdateDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Uygulama açıldığında GitHub'da yeni sürüm olup olmadığını sessizce denetler."
+        AppLanguage.EN -> "Quietly checks GitHub for a newer release when the app opens."
+        AppLanguage.RO -> "Verifică silențios pe GitHub dacă există o versiune nouă la deschiderea aplicației."
+    }
+
+    fun autoUpdateOff(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Kapalı"
+        AppLanguage.EN -> "Off"
+        AppLanguage.RO -> "Oprit"
+    }
+
+    fun autoUpdateDaily(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Günlük"
+        AppLanguage.EN -> "Daily"
+        AppLanguage.RO -> "Zilnic"
+    }
+
+    fun autoUpdateWeekly(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Haftalık"
+        AppLanguage.EN -> "Weekly"
+        AppLanguage.RO -> "Săptămânal"
+    }
+
+    fun autoUpdateBanner(version: String, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Yeni AynaCast sürümü yayınlandı: v$version"
+        AppLanguage.EN -> "New AynaCast release available: v$version"
+        AppLanguage.RO -> "Versiune nouă AynaCast disponibilă: v$version"
+    }
+
+    fun aboutStorageTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "TV Depolama Alanı"
+        AppLanguage.EN -> "TV Storage"
+        AppLanguage.RO -> "Stocare TV"
+    }
+
+    fun aboutStorageValue(free: String, total: String, percentUsed: Int, lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "$free boş / $total (%$percentUsed dolu)"
+        AppLanguage.EN -> "$free free / $total ($percentUsed% used)"
+        AppLanguage.RO -> "$free liber / $total ($percentUsed% utilizat)"
+    }
+
+    fun resetSettingsTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Ayarları Sıfırla"
+        AppLanguage.EN -> "Reset Settings"
+        AppLanguage.RO -> "Resetează setările"
+    }
+
+    fun resetSettingsDesc(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Dil, tema, PIN zorunluluğu ve servis tercihlerini varsayılana döndürür; eşleşmiş cihazlar silinmez."
+        AppLanguage.EN -> "Restores language, theme, PIN requirement and service options to defaults; paired devices are kept."
+        AppLanguage.RO -> "Readuce limba, tema, cerința PIN și opțiunile serviciului la valorile implicite; dispozitivele asociate rămân."
+    }
+
+    fun resetSettingsConfirmTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Tüm ayarlar sıfırlansın mı?"
+        AppLanguage.EN -> "Reset all settings?"
+        AppLanguage.RO -> "Resetați toate setările?"
+    }
+
+    fun resetSettingsConfirmMessage(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Tüm uygulama tercihleri varsayılan değerlerine dönecek. Eşleşmiş cihazlarınız korunacaktır."
+        AppLanguage.EN -> "All app preferences will return to their default values. Your paired devices will be kept."
+        AppLanguage.RO -> "Toate preferințele aplicației vor reveni la valorile implicite. Dispozitivele asociate vor fi păstrate."
+    }
+
+    fun forgetAllConfirmTitle(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Tüm eşleşmiş cihazlar unutulsun mu?"
+        AppLanguage.EN -> "Forget all paired devices?"
+        AppLanguage.RO -> "Uitați toate dispozitivele asociate?"
+    }
+
+    fun forgetAllConfirmMessage(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Tüm cihazların bir sonraki bağlantıda ekrandaki kodu yeniden girmesi gerekecektir."
+        AppLanguage.EN -> "Every device will need to enter the on-screen code again the next time it connects."
+        AppLanguage.RO -> "Fiecare dispozitiv va trebui să introducă din nou codul de pe ecran la următoarea conectare."
+    }
+
+    fun confirm(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Onayla"
+        AppLanguage.EN -> "Confirm"
+        AppLanguage.RO -> "Confirmă"
+    }
+
+    fun cancel(lang: AppLanguage): String = when (lang) {
+        AppLanguage.TR -> "Vazgeç"
+        AppLanguage.EN -> "Cancel"
+        AppLanguage.RO -> "Anulează"
+    }
 }
